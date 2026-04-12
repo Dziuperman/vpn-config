@@ -1,0 +1,80 @@
+{
+  "log": {
+    "loglevel": "${XRAY_LOG_LEVEL}"
+  },
+  "inbounds": [
+    {
+      "tag": "vless-reality",
+      "listen": "0.0.0.0",
+      "port": ${XRAY_VLESS_PORT},
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "${XRAY_CLIENT_UUID}",
+            "flow": "xtls-rprx-vision"
+          }
+        ],
+        "decryption": "none"
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "${XRAY_REALITY_DEST}",
+          "serverNames": [
+            "${XRAY_REALITY_SERVER_NAME}"
+          ],
+          "privateKey": "${XRAY_REALITY_PRIVATE_KEY}",
+          "shortIds": [
+            "${XRAY_REALITY_SHORT_ID}"
+          ]
+        }
+      }
+    },
+    {
+  "tag": "telegram-socks",
+  "listen": "0.0.0.0",
+  "port": ${XRAY_TELEGRAM_SOCKS_PORT},
+  "protocol": "socks",
+  "settings": {
+    "auth": "password",
+    "accounts": [
+      {
+        "user": "${XRAY_TELEGRAM_SOCKS_USER}",
+        "pass": "${XRAY_TELEGRAM_SOCKS_PASS}"
+      }
+    ],
+    "udp": true
+  },
+  "sniffing": {
+    "enabled": true,
+    "destOverride": ["http", "tls"]
+  }
+}
+  ],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    },
+    {
+      "tag": "block",
+      "protocol": "blackhole"
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": ["telegram-socks"],
+        "outboundTag": "direct"
+      }
+    ]
+  }
+}
