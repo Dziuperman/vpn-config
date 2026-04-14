@@ -38,6 +38,7 @@ cd vpn-config
 6. запускает `docker compose up -d`
 7. ждет healthy status контейнера
 8. пишет клиентские параметры в `.generated/client/connection-summary.txt`
+9. генерирует готовый `Shadowrocket`-конфиг и отдельный `vless://` import link
 
 Если Docker уже установлен, `install.sh` пропускает host bootstrap и сразу переходит к deployment flow.
 
@@ -94,6 +95,12 @@ docker compose restart
 
 После `bootstrap` готовые параметры лежат в `.generated/client/connection-summary.txt`.
 
+Готовые клиентские артефакты:
+
+- `.generated/client/connection-summary.txt`
+- `.generated/client/shadowrocket.conf`
+- `.generated/client/shadowrocket-vless.txt`
+
 Там есть:
 
 - адрес сервера
@@ -103,6 +110,16 @@ docker compose restart
 - short ID
 - готовый VLESS URI
 - готовая строка для Telegram SOCKS
+
+Для Shadowrocket основной путь теперь такой:
+
+1. забрать `.generated/client/shadowrocket.conf`
+2. импортировать файл в клиент
+
+Если конкретная версия клиента не примет локальный `.conf`, запасной путь:
+
+1. открыть `.generated/client/shadowrocket-vless.txt`
+2. импортировать содержащийся там `vless://` link
 
 ## Бэкап
 
