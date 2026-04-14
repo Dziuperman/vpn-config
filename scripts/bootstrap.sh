@@ -3,38 +3,30 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-ENV_FILE="$ROOT_DIR/.env"
-ENV_EXAMPLE_FILE="$ROOT_DIR/.env.example"
 RENDER_SCRIPT="$ROOT_DIR/scripts/render-config.sh"
-COMPOSE_FILE="$ROOT_DIR/compose.yaml"
-
-require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    printf '%s\n' "Missing required command: $1" >&2
-    exit 1
-  fi
-}
+# shellcheck disable=SC1091
+. "$ROOT_DIR/scripts/common.sh"
 
 wait_for_container_health() {
-  container_name=${XRAY_CONTAINER_NAME:-xray-vpn}
+  container_name=$(container_name)
   attempts=30
   count=1
 
   while [ "$count" -le "$attempts" ]; do
-    status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_name" 2>/dev/null || true)
+    status=$(container_health_status)
 
     case "$status" in
       healthy)
-        printf '%s\n' "Container $container_name is healthy"
+        log_info "Container $container_name is healthy"
         return 0
         ;;
       running)
-        printf '%s\n' "Container $container_name is running"
+        log_info "Container $container_name is running"
         return 0
         ;;
       unhealthy|exited|dead)
-        printf '%s\n' "Container $container_name failed with status: $status" >&2
-        docker compose -f "$COMPOSE_FILE" logs --no-color --tail 50 >&2 || true
+        log_info "Container $container_name failed with status: $status"
+        print_runtime_diagnostics >&2
         exit 1
         ;;
     esac
@@ -43,23 +35,16 @@ wait_for_container_health() {
     count=$((count + 1))
   done
 
-  printf '%s\n' "Timed out waiting for container health" >&2
-  docker compose -f "$COMPOSE_FILE" ps >&2 || true
+  log_info "Timed out waiting for container health"
+  print_runtime_diagnostics >&2
   exit 1
 }
 
 create_env_if_missing() {
   if [ ! -f "$ENV_FILE" ]; then
     cp "$ENV_EXAMPLE_FILE" "$ENV_FILE"
-    printf '%s\n' "Created $ENV_FILE from template"
+    log_info "Created $ENV_FILE from template"
   fi
-}
-
-load_env() {
-  set -a
-  # shellcheck disable=SC1090
-  . "$ENV_FILE"
-  set +a
 }
 
 upsert_env() {
@@ -123,29 +108,39 @@ ensure_env_value() {
 
   generated_value=$($generator)
   upsert_env "$key" "$generated_value"
-  printf '%s\n' "Generated $key"
+  log_info "Generated $key"
 }
 
 ensure_defaults() {
-  load_env
+  load_env_required
 
   ensure_env_value XRAY_CLIENT_UUID "${XRAY_CLIENT_UUID:-}" generate_uuid
   ensure_env_value XRAY_REALITY_SHORT_ID "${XRAY_REALITY_SHORT_ID:-}" "openssl rand -hex 8"
   ensure_env_value XRAY_TELEGRAM_SOCKS_USER "${XRAY_TELEGRAM_SOCKS_USER:-}" "random_alnum 12"
   ensure_env_value XRAY_TELEGRAM_SOCKS_PASS "${XRAY_TELEGRAM_SOCKS_PASS:-}" "random_alnum 24"
 
-  load_env
+  load_env_required
   if [ -z "${XRAY_REALITY_PRIVATE_KEY:-}" ]; then
     keys_output=$(generate_reality_keys)
     private_key=$(printf '%s\n' "$keys_output" | awk -F': ' '/^PrivateKey:/ {print $2}')
     public_key=$(printf '%s\n' "$keys_output" | awk -F': ' '/^Password:/ {print $2}')
     upsert_env XRAY_REALITY_PRIVATE_KEY "$private_key"
-    printf '%s\n' "Generated XRAY_REALITY_PRIVATE_KEY"
-    printf '%s\n' "Derived REALITY public key: $public_key"
+    log_info "Generated XRAY_REALITY_PRIVATE_KEY"
+    log_info "Derived REALITY public key: $public_key"
   fi
 }
 
+check_runtime_ports() {
+  load_env_if_present
+  vless_port=$(env_port_value XRAY_VLESS_PORT 8443)
+  socks_port=$(env_port_value XRAY_TELEGRAM_SOCKS_PORT 29418)
+
+  port_in_use "$vless_port" || fail "Expected VLESS port $vless_port to be open after deployment."
+  port_in_use "$socks_port" || fail "Expected SOCKS port $socks_port to be open after deployment."
+}
+
 main() {
+  log_step "deploy" "Running bootstrap deployment"
   require_command docker
   require_command openssl
   require_command awk
@@ -156,22 +151,26 @@ main() {
   fi
 
   if [ ! -f "$ENV_EXAMPLE_FILE" ]; then
-    printf '%s\n' "Missing $ENV_EXAMPLE_FILE" >&2
-    exit 1
+    fail "Missing $ENV_EXAMPLE_FILE"
   fi
 
   create_env_if_missing
   ensure_defaults
   "$RENDER_SCRIPT"
 
-  docker compose -f "$COMPOSE_FILE" config >/dev/null
+  log_info "Validating compose configuration"
+  docker_compose_config_check
+
+  log_info "Starting Xray container"
   docker compose -f "$COMPOSE_FILE" up -d
   wait_for_container_health
+  check_runtime_ports
 
   printf '\n%s\n' "VPN is running."
-  printf '%s\n' "Server config: $ROOT_DIR/.generated/server/config.json"
-  printf '%s\n' "Client summary: $ROOT_DIR/.generated/client/connection-summary.txt"
-  printf '%s\n' "Logs: docker compose -f $COMPOSE_FILE logs -f"
+  log_info "Server config: $ROOT_DIR/.generated/server/config.json"
+  log_info "Client summary: $ROOT_DIR/.generated/client/connection-summary.txt"
+  log_info "Shadowrocket config: $ROOT_DIR/.generated/client/shadowrocket.conf"
+  log_info "Logs: docker compose -f $COMPOSE_FILE logs -f"
 }
 
 main "$@"

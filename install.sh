@@ -3,19 +3,16 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+# shellcheck disable=SC1091
+. "$ROOT_DIR/scripts/common.sh"
+
 INSTALL_HOST_SCRIPT="$ROOT_DIR/scripts/install-host.sh"
 BOOTSTRAP_SCRIPT="$ROOT_DIR/scripts/bootstrap.sh"
-
-require_command() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    printf '%s\n' "Missing required command: $1" >&2
-    exit 1
-  fi
-}
+DOCTOR_SCRIPT="$ROOT_DIR/scripts/doctor.sh"
 
 run_install_host() {
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    printf '%s\n' "Docker already available, skipping host installation"
+    log_info "Docker already available, skipping host installation"
     return 0
   fi
 
@@ -29,14 +26,50 @@ run_install_host() {
     return 0
   fi
 
-  printf '%s\n' "Docker is not installed and sudo is unavailable. Run scripts/install-host.sh as root first." >&2
-  exit 1
+  fail "Docker is not installed and sudo is unavailable. Run scripts/install-host.sh as root first."
+}
+
+preflight() {
+  log_step "preflight" "Checking local prerequisites and deployment inputs"
+
+  require_command sh
+  require_command awk
+  require_command openssl
+
+  if [ ! -f "$ENV_EXAMPLE_FILE" ]; then
+    fail "Missing $ENV_EXAMPLE_FILE"
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    if docker_registry_reachable; then
+      log_info "Docker registry connectivity: ok"
+    else
+      log_warn "Cannot verify ghcr.io reachability during preflight. Deployment may still succeed if Docker daemon networking is available."
+    fi
+  else
+    log_info "curl not found yet, skipping registry preflight until host bootstrap"
+  fi
+}
+
+verify() {
+  log_step "verify" "Running post-deploy diagnostics"
+  "$DOCTOR_SCRIPT" --strict
 }
 
 main() {
-  require_command sh
+  preflight
+
+  log_step "host" "Preparing host dependencies"
   run_install_host
+
+  log_step "deploy" "Running bootstrap deployment"
   "$BOOTSTRAP_SCRIPT"
+
+  verify
+
+  log_step "summary" "Deployment completed"
+  log_info "Client summary: $ROOT_DIR/.generated/client/connection-summary.txt"
+  log_info "Shadowrocket config: $ROOT_DIR/.generated/client/shadowrocket.conf"
 }
 
 main "$@"

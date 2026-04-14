@@ -8,8 +8,10 @@
 - `server/config.template.json` хранит шаблон Xray-конфига для `VLESS + REALITY` и отдельного `telegram-socks` inbound.
 - `install.sh` подготавливает хост при необходимости и запускает полный деплой.
 - `scripts/install-host.sh` устанавливает Docker/Compose и открывает нужные порты через `ufw` на Ubuntu/Debian.
+- `scripts/preflight.sh` делает non-mutating preflight-checks перед первым деплоем.
 - `scripts/bootstrap.sh` создает `.env`, генерирует секреты, рендерит конфиг и запускает контейнер.
 - `scripts/validate.sh` проверяет `compose` и валидирует Xray-конфиг через официальный контейнер.
+- `scripts/doctor.sh` диагностирует уже настроенный сервер и deployment state.
 - `.generated/` содержит только локально сгенерированные артефакты и не коммитится.
 
 ## Требования
@@ -30,15 +32,17 @@ cd vpn-config
 
 Скрипт:
 
-1. при необходимости устанавливает Docker и Compose plugin
-2. настраивает `ufw` и открывает порты VPN
-3. создает `.env` из `.env.example`, если файла еще нет
-4. генерирует UUID, REALITY private key, short ID и SOCKS credentials
-5. рендерит `.generated/server/config.json`
-6. запускает `docker compose up -d`
-7. ждет healthy status контейнера
-8. пишет клиентские параметры в `.generated/client/connection-summary.txt`
-9. генерирует готовый `Shadowrocket`-конфиг и отдельный `vless://` import link
+1. запускает preflight-проверки
+2. при необходимости устанавливает Docker и Compose plugin
+3. настраивает `ufw` и открывает порты VPN, не ломая существующие правила
+4. создает `.env` из `.env.example`, если файла еще нет
+5. генерирует UUID, REALITY private key, short ID и SOCKS credentials
+6. рендерит `.generated/server/config.json`
+7. запускает `docker compose up -d`
+8. ждет healthy status контейнера и проверяет опубликованные порты
+9. пишет клиентские параметры в `.generated/client/connection-summary.txt`
+10. генерирует готовый `Shadowrocket`-конфиг и отдельный `vless://` import link
+11. запускает post-deploy doctor check
 
 Если Docker уже установлен, `install.sh` пропускает host bootstrap и сразу переходит к deployment flow.
 
@@ -65,6 +69,18 @@ cd vpn-config
 
 ```sh
 ./scripts/validate.sh
+```
+
+Preflight без изменений на хосте:
+
+```sh
+./scripts/preflight.sh
+```
+
+Диагностика уже настроенного сервера:
+
+```sh
+./scripts/doctor.sh
 ```
 
 Просмотр статуса:
@@ -142,3 +158,9 @@ cd vpn-config
 ```
 
 Если работаешь не под `root`, скрипт использует `sudo` для установки Docker и firewall.
+
+## Надёжность деплоя
+
+- Повторный `./install.sh` безопасен: существующие секреты в `.env` не перегенерируются.
+- `install.sh` падает раньше, если не может достучаться до `ghcr.io`, если порты заняты или если есть явный риск с `ufw` и SSH.
+- При проблемах post-deploy проверка выводит статус контейнера и последние логи.
