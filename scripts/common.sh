@@ -109,7 +109,8 @@ docker_registry_reachable() {
 check_generated_files() {
   [ -f "$GENERATED_CONFIG_FILE" ] || fail "Missing generated config: $GENERATED_CONFIG_FILE"
   [ -f "$ROOT_DIR/.generated/client/connection-summary.txt" ] || fail "Missing client summary"
-  [ -f "$ROOT_DIR/.generated/client/shadowrocket.conf" ] || fail "Missing Shadowrocket config"
+  [ -f "$ROOT_DIR/.generated/client/shadowrocket-rules.conf" ] || fail "Missing Shadowrocket rules config"
+  [ -f "$ROOT_DIR/.generated/client/shadowrocket-vless.txt" ] || fail "Missing Shadowrocket VLESS URI"
 }
 
 docker_compose_config_check() {

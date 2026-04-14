@@ -69,7 +69,8 @@ main() {
 
   log_step "summary" "Deployment completed"
   log_info "Client summary: $ROOT_DIR/.generated/client/connection-summary.txt"
-  log_info "Shadowrocket config: $ROOT_DIR/.generated/client/shadowrocket.conf"
+  log_info "Shadowrocket rules: $ROOT_DIR/.generated/client/shadowrocket-rules.conf"
+  log_info "Shadowrocket VLESS URI: $ROOT_DIR/.generated/client/shadowrocket-vless.txt"
 }
 
 main "$@"

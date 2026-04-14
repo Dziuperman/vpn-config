@@ -169,7 +169,8 @@ main() {
   printf '\n%s\n' "VPN is running."
   log_info "Server config: $ROOT_DIR/.generated/server/config.json"
   log_info "Client summary: $ROOT_DIR/.generated/client/connection-summary.txt"
-  log_info "Shadowrocket config: $ROOT_DIR/.generated/client/shadowrocket.conf"
+  log_info "Shadowrocket rules: $ROOT_DIR/.generated/client/shadowrocket-rules.conf"
+  log_info "Shadowrocket VLESS URI: $ROOT_DIR/.generated/client/shadowrocket-vless.txt"
   log_info "Logs: docker compose -f $COMPOSE_FILE logs -f"
 }
 

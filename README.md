@@ -41,7 +41,7 @@ cd vpn-config
 7. запускает `docker compose up -d`
 8. ждет healthy status контейнера и проверяет опубликованные порты
 9. пишет клиентские параметры в `.generated/client/connection-summary.txt`
-10. генерирует готовый `Shadowrocket`-конфиг и отдельный `vless://` import link
+10. генерирует отдельно `Shadowrocket` rules profile и отдельно `vless://` import link для node
 11. запускает post-deploy doctor check
 
 Если Docker уже установлен, `./vpn install` пропускает host bootstrap и сразу переходит к deployment flow.
@@ -59,7 +59,7 @@ cd vpn-config
 ./vpn logs --tail 100
 ./vpn restart
 ./vpn client summary
-./vpn client shadowrocket
+./vpn client shadowrocket-rules
 ./vpn client uri
 ./vpn env get XRAY_VLESS_PORT
 ./vpn env set XRAY_VLESS_PORT 9443
@@ -196,7 +196,7 @@ Preflight без изменений на хосте:
 Готовые клиентские артефакты:
 
 - `.generated/client/connection-summary.txt`
-- `.generated/client/shadowrocket.conf`
+- `.generated/client/shadowrocket-rules.conf`
 - `.generated/client/shadowrocket-vless.txt`
 
 Там есть:
@@ -209,15 +209,12 @@ Preflight без изменений на хосте:
 - готовый VLESS URI
 - готовая строка для Telegram SOCKS
 
-Для Shadowrocket основной путь теперь такой:
+Для Shadowrocket правильный production-путь теперь такой:
 
-1. забрать `.generated/client/shadowrocket.conf`
-2. импортировать файл в клиент
+1. импортировать node через `.generated/client/shadowrocket-vless.txt`
+2. импортировать rules profile через `.generated/client/shadowrocket-rules.conf`
 
-Если конкретная версия клиента не примет локальный `.conf`, запасной путь:
-
-1. открыть `.generated/client/shadowrocket-vless.txt`
-2. импортировать содержащийся там `vless://` link
+То есть node и rules теперь разделены намеренно.
 
 ## Бэкап
 

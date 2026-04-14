@@ -12,7 +12,7 @@ PREFLIGHT_SCRIPT="$ROOT_DIR/scripts/preflight.sh"
 DOCTOR_SCRIPT="$ROOT_DIR/scripts/doctor.sh"
 VALIDATE_SCRIPT="$ROOT_DIR/scripts/validate.sh"
 CLIENT_SUMMARY_FILE="$ROOT_DIR/.generated/client/connection-summary.txt"
-CLIENT_SHADOWROCKET_FILE="$ROOT_DIR/.generated/client/shadowrocket.conf"
+CLIENT_SHADOWROCKET_RULES_FILE="$ROOT_DIR/.generated/client/shadowrocket-rules.conf"
 CLIENT_URI_FILE="$ROOT_DIR/.generated/client/shadowrocket-vless.txt"
 
 OVERRIDES_FILE=$(mktemp)
@@ -31,7 +31,7 @@ Usage:
   ./vpn logs [--tail N]
   ./vpn restart
   ./vpn client summary
-  ./vpn client shadowrocket
+  ./vpn client shadowrocket-rules
   ./vpn client uri
   ./vpn env get <KEY>
   ./vpn env set <KEY> <VALUE>
@@ -239,9 +239,9 @@ run_client() {
       require_generated_file "$CLIENT_SUMMARY_FILE"
       cat "$CLIENT_SUMMARY_FILE"
       ;;
-    shadowrocket)
-      require_generated_file "$CLIENT_SHADOWROCKET_FILE"
-      cat "$CLIENT_SHADOWROCKET_FILE"
+    shadowrocket-rules)
+      require_generated_file "$CLIENT_SHADOWROCKET_RULES_FILE"
+      cat "$CLIENT_SHADOWROCKET_RULES_FILE"
       ;;
     uri)
       require_generated_file "$CLIENT_URI_FILE"
