@@ -1,0 +1,34 @@
+services:
+  xray:
+    image: ghcr.io/xtls/xray-core:${XRAY_IMAGE_TAG}
+    container_name: ${XRAY_CONTAINER_NAME:-xray-vpn}
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    ports:
+      - "${XRAY_VLESS_PORT}:${XRAY_VLESS_PORT}/tcp"
+      - "${XRAY_TELEGRAM_SOCKS_PORT}:${XRAY_TELEGRAM_SOCKS_PORT}/tcp"
+      - "${XRAY_TELEGRAM_SOCKS_PORT}:${XRAY_TELEGRAM_SOCKS_PORT}/udp"
+    volumes:
+      - ./.generated/server/config.json:/etc/xray/config.json:ro
+    command:
+      - run
+      - -config
+      - /etc/xray/config.json
+    healthcheck:
+      test:
+        - CMD
+        - xray
+        - run
+        - -test
+        - -config
+        - /etc/xray/config.json
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
