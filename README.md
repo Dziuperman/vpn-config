@@ -27,7 +27,7 @@
 ```sh
 git clone <your-repo-url>
 cd vpn-config
-./install.sh
+./vpn install
 ```
 
 Скрипт:
@@ -44,7 +44,43 @@ cd vpn-config
 10. генерирует готовый `Shadowrocket`-конфиг и отдельный `vless://` import link
 11. запускает post-deploy doctor check
 
-Если Docker уже установлен, `install.sh` пропускает host bootstrap и сразу переходит к deployment flow.
+Если Docker уже установлен, `./vpn install` пропускает host bootstrap и сразу переходит к deployment flow.
+
+## CLI
+
+Основной публичный интерфейс проекта теперь это `./vpn`.
+
+```sh
+./vpn install
+./vpn preflight
+./vpn doctor
+./vpn validate
+./vpn status
+./vpn logs --tail 100
+./vpn restart
+./vpn client summary
+./vpn client shadowrocket
+./vpn client uri
+./vpn env get XRAY_VLESS_PORT
+./vpn env set XRAY_VLESS_PORT 9443
+```
+
+Для `install`, `deploy` и `preflight` доступны флаги:
+
+```sh
+./vpn install --vless-port 9443 --server-address vpn.example.com
+./vpn deploy --image-tag 25.12.8
+```
+
+Поддерживаемые флаги:
+
+- `--server-address`
+- `--vless-port`
+- `--telegram-socks-port`
+- `--image-tag`
+- `--log-level`
+- `--reality-dest`
+- `--reality-server-name`
 
 ## Основные переменные
 
@@ -62,49 +98,49 @@ cd vpn-config
 Полный повторный деплой:
 
 ```sh
-./install.sh
+./vpn install
 ```
 
 Первичная валидация:
 
 ```sh
-./scripts/validate.sh
+./vpn validate
 ```
 
 Preflight без изменений на хосте:
 
 ```sh
-./scripts/preflight.sh
+./vpn preflight
 ```
 
 Диагностика уже настроенного сервера:
 
 ```sh
-./scripts/doctor.sh
+./vpn doctor
 ```
 
 Просмотр статуса:
 
 ```sh
-docker compose ps
+./vpn status
 ```
 
 Логи:
 
 ```sh
-docker compose logs -f
+./vpn logs
 ```
 
 Перезапуск:
 
 ```sh
-docker compose restart
+./vpn restart
 ```
 
 Обновление Xray:
 
-1. поменять `XRAY_IMAGE_TAG` в `.env`
-2. заново выполнить `./scripts/validate.sh`
+1. поменять `XRAY_IMAGE_TAG` через `./vpn env set XRAY_IMAGE_TAG <value>` или вручную в `.env`
+2. заново выполнить `./vpn validate`
 3. выполнить `docker compose pull && docker compose up -d`
 
 ## Клиентские данные
@@ -154,13 +190,13 @@ docker compose restart
 apt-get update && apt-get install -y git
 git clone <your-repo-url>
 cd vpn-config
-./install.sh
+./vpn install
 ```
 
 Если работаешь не под `root`, скрипт использует `sudo` для установки Docker и firewall.
 
 ## Надёжность деплоя
 
-- Повторный `./install.sh` безопасен: существующие секреты в `.env` не перегенерируются.
-- `install.sh` падает раньше, если не может достучаться до `ghcr.io`, если порты заняты или если есть явный риск с `ufw` и SSH.
+- Повторный `./vpn install` безопасен: существующие секреты в `.env` не перегенерируются.
+- `./vpn install` падает раньше, если порты заняты или если есть явный риск с `ufw` и SSH.
 - При проблемах post-deploy проверка выводит статус контейнера и последние логи.

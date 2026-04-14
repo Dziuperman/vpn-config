@@ -1,0 +1,332 @@
+#!/bin/sh
+
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+# shellcheck disable=SC1091
+. "$ROOT_DIR/scripts/common.sh"
+
+INSTALL_SCRIPT="$ROOT_DIR/install.sh"
+BOOTSTRAP_SCRIPT="$ROOT_DIR/scripts/bootstrap.sh"
+PREFLIGHT_SCRIPT="$ROOT_DIR/scripts/preflight.sh"
+DOCTOR_SCRIPT="$ROOT_DIR/scripts/doctor.sh"
+VALIDATE_SCRIPT="$ROOT_DIR/scripts/validate.sh"
+CLIENT_SUMMARY_FILE="$ROOT_DIR/.generated/client/connection-summary.txt"
+CLIENT_SHADOWROCKET_FILE="$ROOT_DIR/.generated/client/shadowrocket.conf"
+CLIENT_URI_FILE="$ROOT_DIR/.generated/client/shadowrocket-vless.txt"
+
+OVERRIDES_FILE=$(mktemp)
+TEMP_ENV_FILE=""
+trap 'rm -f "$OVERRIDES_FILE" ${TEMP_ENV_FILE:+"$TEMP_ENV_FILE"}' EXIT
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./vpn install [flags]
+  ./vpn deploy [flags]
+  ./vpn preflight [flags]
+  ./vpn doctor [--strict]
+  ./vpn validate
+  ./vpn status
+  ./vpn logs [--tail N]
+  ./vpn restart
+  ./vpn client summary
+  ./vpn client shadowrocket
+  ./vpn client uri
+  ./vpn env get <KEY>
+  ./vpn env set <KEY> <VALUE>
+  ./vpn help
+
+Flags for install/deploy/preflight:
+  --server-address <value>
+  --vless-port <value>
+  --telegram-socks-port <value>
+  --image-tag <value>
+  --log-level <value>
+  --reality-dest <value>
+  --reality-server-name <value>
+
+Flags for doctor:
+  --strict
+
+Flags for logs:
+  --tail <N>
+EOF
+}
+
+fail_usage() {
+  printf '%s\n\n' "$1" >&2
+  usage >&2
+  exit 2
+}
+
+ensure_env_file_exists() {
+  if [ ! -f "$ENV_FILE" ]; then
+    [ -f "$ENV_EXAMPLE_FILE" ] || fail "Missing $ENV_EXAMPLE_FILE"
+    cp "$ENV_EXAMPLE_FILE" "$ENV_FILE"
+  fi
+}
+
+upsert_file_key() {
+  target_file=$1
+  key=$2
+  value=$3
+
+  if grep -Eq "^${key}=" "$target_file"; then
+    awk -v key="$key" -v value="$value" '
+      $0 ~ ("^" key "=") { print key "=" value; next }
+      { print }
+    ' "$target_file" > "$target_file.tmp"
+    mv "$target_file.tmp" "$target_file"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$target_file"
+  fi
+}
+
+append_override() {
+  printf '%s=%s\n' "$1" "$2" >> "$OVERRIDES_FILE"
+}
+
+apply_overrides_to_file() {
+  target_file=$1
+
+  if [ ! -s "$OVERRIDES_FILE" ]; then
+    return 0
+  fi
+
+  while IFS='=' read -r key value; do
+    [ -n "$key" ] || continue
+    upsert_file_key "$target_file" "$key" "$value"
+  done < "$OVERRIDES_FILE"
+}
+
+build_temp_env() {
+  TEMP_ENV_FILE=$(mktemp)
+
+  if [ -f "$ENV_FILE" ]; then
+    cp "$ENV_FILE" "$TEMP_ENV_FILE"
+  elif [ -f "$ENV_EXAMPLE_FILE" ]; then
+    cp "$ENV_EXAMPLE_FILE" "$TEMP_ENV_FILE"
+  else
+    fail "Missing both $ENV_FILE and $ENV_EXAMPLE_FILE"
+  fi
+
+  apply_overrides_to_file "$TEMP_ENV_FILE"
+}
+
+run_script_with_env() {
+  script=$1
+  shift
+  ENV_FILE="$TEMP_ENV_FILE" "$script" "$@"
+}
+
+require_generated_file() {
+  [ -f "$1" ] || fail "Missing generated file: $1"
+}
+
+parse_override_flags() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --server-address)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        append_override XRAY_SERVER_ADDRESS "$2"
+        shift 2
+        ;;
+      --vless-port)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        append_override XRAY_VLESS_PORT "$2"
+        shift 2
+        ;;
+      --telegram-socks-port)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        append_override XRAY_TELEGRAM_SOCKS_PORT "$2"
+        shift 2
+        ;;
+      --image-tag)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        append_override XRAY_IMAGE_TAG "$2"
+        shift 2
+        ;;
+      --log-level)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        append_override XRAY_LOG_LEVEL "$2"
+        shift 2
+        ;;
+      --reality-dest)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        append_override XRAY_REALITY_DEST "$2"
+        shift 2
+        ;;
+      --reality-server-name)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        append_override XRAY_REALITY_SERVER_NAME "$2"
+        shift 2
+        ;;
+      *)
+        fail_usage "Unknown flag: $1"
+        ;;
+    esac
+  done
+}
+
+run_install() {
+  parse_override_flags "$@"
+  ensure_env_file_exists
+  apply_overrides_to_file "$ENV_FILE"
+  "$INSTALL_SCRIPT"
+}
+
+run_deploy() {
+  parse_override_flags "$@"
+  ensure_env_file_exists
+  apply_overrides_to_file "$ENV_FILE"
+  "$BOOTSTRAP_SCRIPT"
+}
+
+run_preflight() {
+  parse_override_flags "$@"
+  build_temp_env
+  run_script_with_env "$PREFLIGHT_SCRIPT"
+}
+
+run_doctor() {
+  strict_flag=""
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --strict)
+        strict_flag="--strict"
+        shift
+        ;;
+      *)
+        fail_usage "Unknown flag: $1"
+        ;;
+    esac
+  done
+
+  "$DOCTOR_SCRIPT" ${strict_flag:+"$strict_flag"}
+}
+
+run_logs() {
+  tail_lines=""
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --tail)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        tail_lines=$2
+        shift 2
+        ;;
+      *)
+        fail_usage "Unknown flag: $1"
+        ;;
+    esac
+  done
+
+  if [ -n "$tail_lines" ]; then
+    docker compose -f "$COMPOSE_FILE" logs -f --tail "$tail_lines"
+    return 0
+  fi
+
+  docker compose -f "$COMPOSE_FILE" logs -f
+}
+
+run_client() {
+  [ $# -ge 1 ] || fail_usage "Missing client subcommand"
+
+  case "$1" in
+    summary)
+      require_generated_file "$CLIENT_SUMMARY_FILE"
+      cat "$CLIENT_SUMMARY_FILE"
+      ;;
+    shadowrocket)
+      require_generated_file "$CLIENT_SHADOWROCKET_FILE"
+      cat "$CLIENT_SHADOWROCKET_FILE"
+      ;;
+    uri)
+      require_generated_file "$CLIENT_URI_FILE"
+      cat "$CLIENT_URI_FILE"
+      ;;
+    *)
+      fail_usage "Unknown client subcommand: $1"
+      ;;
+  esac
+}
+
+run_env() {
+  [ $# -ge 1 ] || fail_usage "Missing env subcommand"
+
+  case "$1" in
+    get)
+      [ $# -eq 2 ] || fail_usage "Usage: ./vpn env get <KEY>"
+      [ -f "$ENV_FILE" ] || fail "Missing $ENV_FILE"
+      if ! grep -Eq "^$2=" "$ENV_FILE"; then
+        fail "Missing env key: $2"
+      fi
+      awk -F= -v key="$2" '$1 == key {sub(/^[^=]*=/, ""); print; exit}' "$ENV_FILE"
+      ;;
+    set)
+      [ $# -eq 3 ] || fail_usage "Usage: ./vpn env set <KEY> <VALUE>"
+      ensure_env_file_exists
+      upsert_file_key "$ENV_FILE" "$2" "$3"
+      printf '%s=%s\n' "$2" "$3"
+      ;;
+    *)
+      fail_usage "Unknown env subcommand: $1"
+      ;;
+  esac
+}
+
+main() {
+  [ $# -ge 1 ] || {
+    usage
+    exit 0
+  }
+
+  command_name=$1
+  shift
+
+  case "$command_name" in
+    install)
+      run_install "$@"
+      ;;
+    deploy)
+      run_deploy "$@"
+      ;;
+    preflight)
+      run_preflight "$@"
+      ;;
+    doctor)
+      run_doctor "$@"
+      ;;
+    validate)
+      [ $# -eq 0 ] || fail_usage "validate does not accept flags"
+      "$VALIDATE_SCRIPT"
+      ;;
+    status)
+      [ $# -eq 0 ] || fail_usage "status does not accept flags"
+      docker compose -f "$COMPOSE_FILE" ps
+      ;;
+    logs)
+      run_logs "$@"
+      ;;
+    restart)
+      [ $# -eq 0 ] || fail_usage "restart does not accept flags"
+      docker compose -f "$COMPOSE_FILE" restart
+      ;;
+    client)
+      run_client "$@"
+      ;;
+    env)
+      run_env "$@"
+      ;;
+    help|-h|--help)
+      usage
+      ;;
+    *)
+      fail_usage "Unknown command: $command_name"
+      ;;
+  esac
+}
+
+main "$@"
