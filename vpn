@@ -14,6 +14,7 @@ VALIDATE_SCRIPT="$ROOT_DIR/scripts/validate.sh"
 CLIENT_SUMMARY_FILE="$ROOT_DIR/.generated/client/connection-summary.txt"
 CLIENT_SHADOWROCKET_RULES_FILE="$ROOT_DIR/.generated/client/shadowrocket-rules.conf"
 CLIENT_URI_FILE="$ROOT_DIR/.generated/client/shadowrocket-vless.txt"
+SHADOWROCKET_RULES_URL="https://raw.githubusercontent.com/Dziuperman/vpn-config/refs/heads/main/client/shadowrocket/default.conf"
 
 OVERRIDES_FILE=$(mktemp)
 TEMP_ENV_FILE=""
@@ -32,6 +33,7 @@ Usage:
   ./vpn restart
   ./vpn client summary
   ./vpn client shadowrocket-rules
+  ./vpn client shadowrocket-rules-url
   ./vpn client uri
   ./vpn env get <KEY>
   ./vpn env set <KEY> <VALUE>
@@ -242,6 +244,9 @@ run_client() {
     shadowrocket-rules)
       require_generated_file "$CLIENT_SHADOWROCKET_RULES_FILE"
       cat "$CLIENT_SHADOWROCKET_RULES_FILE"
+      ;;
+    shadowrocket-rules-url)
+      printf '%s\n' "$SHADOWROCKET_RULES_URL"
       ;;
     uri)
       require_generated_file "$CLIENT_URI_FILE"

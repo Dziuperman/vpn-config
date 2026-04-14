@@ -60,6 +60,7 @@ cd vpn-config
 ./vpn restart
 ./vpn client summary
 ./vpn client shadowrocket-rules
+./vpn client shadowrocket-rules-url
 ./vpn client uri
 ./vpn env get XRAY_VLESS_PORT
 ./vpn env set XRAY_VLESS_PORT 9443
@@ -212,9 +213,17 @@ Preflight без изменений на хосте:
 Для Shadowrocket правильный production-путь теперь такой:
 
 1. импортировать node через `.generated/client/shadowrocket-vless.txt`
-2. импортировать rules profile через `.generated/client/shadowrocket-rules.conf`
+2. импортировать rules profile по remote URL или через `.generated/client/shadowrocket-rules.conf`
 
 То есть node и rules теперь разделены намеренно.
+
+Для updateable rules profile используй URL:
+
+```sh
+./vpn client shadowrocket-rules-url
+```
+
+Этот URL указывает на публичный rules-файл в GitHub, а внутри самого rules profile уже прописан `update-url`, поэтому после корректного remote-импорта в Shadowrocket rules можно обновлять без повторного переимпорта.
 
 ## Бэкап
 
