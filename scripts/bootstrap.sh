@@ -6,12 +6,46 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 ENV_FILE="$ROOT_DIR/.env"
 ENV_EXAMPLE_FILE="$ROOT_DIR/.env.example"
 RENDER_SCRIPT="$ROOT_DIR/scripts/render-config.sh"
+COMPOSE_FILE="$ROOT_DIR/compose.yaml"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     printf '%s\n' "Missing required command: $1" >&2
     exit 1
   fi
+}
+
+wait_for_container_health() {
+  container_name=${XRAY_CONTAINER_NAME:-xray-vpn}
+  attempts=30
+  count=1
+
+  while [ "$count" -le "$attempts" ]; do
+    status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_name" 2>/dev/null || true)
+
+    case "$status" in
+      healthy)
+        printf '%s\n' "Container $container_name is healthy"
+        return 0
+        ;;
+      running)
+        printf '%s\n' "Container $container_name is running"
+        return 0
+        ;;
+      unhealthy|exited|dead)
+        printf '%s\n' "Container $container_name failed with status: $status" >&2
+        docker compose -f "$COMPOSE_FILE" logs --no-color --tail 50 >&2 || true
+        exit 1
+        ;;
+    esac
+
+    sleep 2
+    count=$((count + 1))
+  done
+
+  printf '%s\n' "Timed out waiting for container health" >&2
+  docker compose -f "$COMPOSE_FILE" ps >&2 || true
+  exit 1
 }
 
 create_env_if_missing() {
@@ -130,13 +164,14 @@ main() {
   ensure_defaults
   "$RENDER_SCRIPT"
 
-  docker compose -f "$ROOT_DIR/compose.yaml" config >/dev/null
-  docker compose -f "$ROOT_DIR/compose.yaml" up -d
+  docker compose -f "$COMPOSE_FILE" config >/dev/null
+  docker compose -f "$COMPOSE_FILE" up -d
+  wait_for_container_health
 
   printf '\n%s\n' "VPN is running."
   printf '%s\n' "Server config: $ROOT_DIR/.generated/server/config.json"
   printf '%s\n' "Client summary: $ROOT_DIR/.generated/client/connection-summary.txt"
-  printf '%s\n' "Logs: docker compose -f $ROOT_DIR/compose.yaml logs -f"
+  printf '%s\n' "Logs: docker compose -f $COMPOSE_FILE logs -f"
 }
 
 main "$@"

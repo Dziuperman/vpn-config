@@ -10,6 +10,27 @@ OUTPUT_FILE="$OUTPUT_DIR/config.json"
 CLIENT_OUTPUT_DIR="$ROOT_DIR/.generated/client"
 CLIENT_OUTPUT_FILE="$CLIENT_OUTPUT_DIR/connection-summary.txt"
 
+is_ipv4() {
+  value=$1
+  printf '%s\n' "$value" | awk '
+    BEGIN { ok = 1 }
+    NF != 1 { ok = 0 }
+    {
+      split($1, parts, ".")
+      if (length(parts) != 4) {
+        ok = 0
+      } else {
+        for (i = 1; i <= 4; i++) {
+          if (parts[i] !~ /^[0-9]+$/ || parts[i] < 0 || parts[i] > 255) {
+            ok = 0
+          }
+        }
+      }
+    }
+    END { exit(ok ? 0 : 1) }
+  '
+}
+
 require_file() {
   if [ ! -f "$1" ]; then
     printf '%s\n' "Missing required file: $1" >&2
@@ -54,9 +75,23 @@ detect_server_address() {
     return 0
   fi
 
+  if command -v curl >/dev/null 2>&1; then
+    for endpoint in \
+      "https://api.ipify.org" \
+      "https://ipv4.icanhazip.com" \
+      "https://ifconfig.me/ip"
+    do
+      address=$(curl -4fsS --connect-timeout 3 --max-time 5 "$endpoint" 2>/dev/null | tr -d '\r\n' || true)
+      if [ -n "${address:-}" ] && is_ipv4 "$address"; then
+        printf '%s\n' "$address"
+        return 0
+      fi
+    done
+  fi
+
   if command -v hostname >/dev/null 2>&1; then
     address=$(hostname -I 2>/dev/null | awk '{print $1}')
-    if [ -n "${address:-}" ]; then
+    if [ -n "${address:-}" ] && is_ipv4 "$address"; then
       printf '%s\n' "$address"
       return 0
     fi
@@ -64,7 +99,7 @@ detect_server_address() {
 
   if command -v ip >/dev/null 2>&1; then
     address=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '/src/ {for (i = 1; i <= NF; i++) if ($i == "src") {print $(i + 1); exit}}')
-    if [ -n "${address:-}" ]; then
+    if [ -n "${address:-}" ] && is_ipv4 "$address"; then
       printf '%s\n' "$address"
       return 0
     fi
