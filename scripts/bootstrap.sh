@@ -73,8 +73,8 @@ upsert_env() {
 }
 
 random_alnum() {
-  length=$1
-  openssl rand -hex 32 | awk -v length="$length" 'NR == 1 { print substr($0, 1, length) }'
+  char_count=$1
+  openssl rand -hex 32 | cut -c "1-${char_count}"
 }
 
 generate_uuid() {
