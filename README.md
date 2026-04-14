@@ -82,6 +82,52 @@ cd vpn-config
 - `--reality-dest`
 - `--reality-server-name`
 
+## Примеры запуска
+
+Стандартный деплой:
+
+```sh
+./vpn install
+```
+
+Деплой с явным адресом сервера:
+
+```sh
+./vpn install --server-address vpn.example.com
+```
+
+Деплой на нестандартном VLESS-порту:
+
+```sh
+./vpn install --vless-port 9443
+```
+
+Деплой, если на сервере уже заняты и VLESS, и SOCKS порты:
+
+```sh
+./vpn install --vless-port 9443 --telegram-socks-port 29419
+```
+
+Повторный деплой только runtime-части без host bootstrap:
+
+```sh
+./vpn deploy --vless-port 9443 --telegram-socks-port 29419
+```
+
+Смена порта после первого запуска:
+
+```sh
+./vpn env set XRAY_VLESS_PORT 9443
+./vpn env set XRAY_TELEGRAM_SOCKS_PORT 29419
+./vpn deploy
+```
+
+Быстрая проверка перед деплоем с параметрами, без изменений на сервере:
+
+```sh
+./vpn preflight --vless-port 9443 --telegram-socks-port 29419
+```
+
 ## Основные переменные
 
 Править обычно нужно только `.env`.
