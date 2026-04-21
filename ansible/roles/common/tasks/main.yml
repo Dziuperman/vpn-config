@@ -14,7 +14,7 @@
 
 - name: Ensure project root parent exists
   ansible.builtin.file:
-    path: "{{ project_root | dirname }}"
+    path: "{{ xray_project_root | dirname }}"
     state: directory
     owner: "{{ xray_deploy_user }}"
     group: "{{ xray_deploy_group }}"

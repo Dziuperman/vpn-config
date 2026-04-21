@@ -1,4 +1,4 @@
-# Copy this file to ansible/host_vars/vpn-prod.yml and replace the values.
+# Copy this file to ansible/inventory/host_vars/vpn-prod.yml and replace the values.
 ansible_host: 198.51.100.10
 ansible_user: root
 

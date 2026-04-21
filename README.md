@@ -78,16 +78,16 @@ ansible-playbook playbooks/deploy.yml -l vpn-prod
 
 - ставит базовые пакеты, Docker Engine и Compose plugin;
 - добавляет allow rules для SSH и VPN в `ufw`, не меняя default policy и не включая firewall автоматически;
-- раскладывает проект в `project_root`;
+- раскладывает проект в `xray_project_root`;
 - сохраняет существующие секреты из удалённого `.env` или генерирует новые на первом запуске;
 - рендерит `config.json`, запускает `docker compose up -d`, ждёт healthy state;
 - переиспользует `scripts/validate.sh` и `scripts/doctor.sh` для проверки результата.
 
 Структура настроек:
 
-- `ansible/group_vars/vpn.yml` содержит общие defaults;
-- `ansible/host_vars/vpn-prod.yml.example` показывает рекомендуемый per-host формат, а playbooks явно подгружают `ansible/host_vars/<host>.yml`;
-- реальные `ansible/host_vars/*.yml` игнорируются в git, чтобы не утекали production secrets.
+- `ansible/inventory/group_vars/vpn.yml` содержит общие defaults;
+- `ansible/inventory/host_vars/vpn-prod.yml.example` показывает рекомендуемый per-host формат;
+- реальные `ansible/inventory/host_vars/*.yml` игнорируются в git, чтобы не утекали production secrets.
 
 Если хочешь контролируемые и предсказуемые секреты, храни их в `host_vars` или `Ansible Vault`.
 Если секреты не заданы, первый deploy сгенерирует их на удалённом сервере и затем будет переиспользовать без ротации.
@@ -98,6 +98,13 @@ ansible-playbook playbooks/deploy.yml -l vpn-prod
 - не включает `ufw` автоматически;
 - не меняет default incoming/outgoing policy;
 - это безопаснее для VPS, где уже есть ручные правила или другие сервисы.
+
+Precedence у Ansible-слоя такая:
+
+- `ansible/inventory/group_vars/*.yml` задаёт defaults;
+- `ansible/inventory/host_vars/<host>.yml` переопределяет их для конкретного сервера;
+- playbook рендерит итоговый удалённый `.env`;
+- `compose.yaml` и `scripts/*` только потребляют итоговый `.env`.
 
 ## CLI
 

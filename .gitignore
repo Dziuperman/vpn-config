@@ -1,5 +1,5 @@
 .idea/
 .env
 .generated/
-ansible/host_vars/*.yml
+ansible/inventory/host_vars/*.yml
 ansible/.vault_pass.txt

@@ -12,17 +12,24 @@
 
 ## Ожидаемая модель эксплуатации
 
-- `group_vars` задают безопасные общие defaults.
-- `host_vars/<host>.yml` содержит адрес хоста и production overrides. Playbooks подгружают этот файл явно из репозитория.
+- Канонический источник inventory defaults: `ansible/inventory/group_vars/*.yml`.
+- Канонический источник host overrides: `ansible/inventory/host_vars/<host>.yml`.
 - Секреты можно:
   - хранить в `host_vars`/Ansible Vault,
   - либо не задавать вовсе, тогда первый `deploy.yml` сгенерирует их и сохранит в удалённый `.env`.
 
+### Precedence
+
+1. `ansible/inventory/group_vars/*.yml` задаёт defaults.
+2. `ansible/inventory/host_vars/<host>.yml` переопределяет defaults.
+3. `deploy.yml` рендерит итоговый удалённый `.env`.
+4. `compose.yaml` и `scripts/*` только читают итоговый `.env` и не являются источником конфигурации.
+
 ## Быстрый старт
 
 1. Установить Ansible на контроллер.
-2. Скопировать `host_vars/vpn-prod.yml.example` в `host_vars/vpn-prod.yml` и подставить реальный хост.
-3. При необходимости поправить `group_vars/vpn.yml`.
+2. Скопировать `inventory/host_vars/vpn-prod.yml.example` в `inventory/host_vars/vpn-prod.yml` и подставить реальный хост.
+3. При необходимости поправить `inventory/group_vars/vpn.yml`.
 4. Выполнить:
 
 ```sh
@@ -38,3 +45,4 @@ ansible-playbook playbooks/deploy.yml -l vpn-prod
 - Для контролируемой ротации секретов задай новые значения в inventory и повторно выполни `deploy.yml`.
 - `xray_manage_firewall: true` работает в additive-режиме: роль только добавляет allow rules для SSH/VPN и не берёт весь `ufw` под полное управление.
 - Если `ufw` сейчас выключен, playbook не будет включать его сам. Это сделано специально для безопасной миграции с уже существующего сервера.
+- `deploy.yml --check` теперь дружелюбнее: файловые и template-задачи оцениваются, а runtime-команды `docker compose`, рендер клиентских артефактов, validate/doctor и генерация секретов пропускаются.

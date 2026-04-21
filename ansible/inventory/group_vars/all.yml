@@ -1,4 +1,4 @@
-project_root: /opt/xray-vpn
+xray_project_root: /opt/xray-vpn
 xray_deploy_user: root
 xray_deploy_group: root
 xray_manage_firewall: true
@@ -6,5 +6,10 @@ xray_pull_image: true
 xray_run_validate: true
 xray_run_doctor: true
 xray_fetch_client_artifacts: false
+xray_check_mode_placeholder_private_key: check-mode-private-key
+xray_check_mode_placeholder_uuid: 00000000-0000-0000-0000-000000000000
+xray_check_mode_placeholder_short_id: 0000000000000000
+xray_check_mode_placeholder_socks_user: checkmodeuser
+xray_check_mode_placeholder_socks_pass: checkmodepassword
 xray_client_artifact_dir: "{{ playbook_dir }}/../../.generated/ansible/{{ inventory_hostname }}"
 xray_firewall_ssh_port: "{{ ansible_port | default(22) }}"

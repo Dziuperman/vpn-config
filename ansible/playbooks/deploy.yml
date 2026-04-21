@@ -1,11 +1,6 @@
 - name: Deploy Xray VPN
   hosts: vpn
   become: true
-  pre_tasks:
-    - name: Load repository host vars when present
-      ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../host_vars/{{ inventory_hostname }}.yml"
-      when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../host_vars/' ~ inventory_hostname ~ '.yml', wantlist=True) | length > 0
   roles:
     - role: firewall
     - role: xray_vpn

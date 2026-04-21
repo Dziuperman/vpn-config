@@ -23,19 +23,19 @@
     group: "{{ item.group | default(xray_deploy_group) }}"
     mode: "{{ item.mode | default('0755') }}"
   loop:
-    - { path: "{{ project_root }}" }
-    - { path: "{{ project_root }}/client" }
-    - { path: "{{ project_root }}/scripts" }
-    - { path: "{{ project_root }}/server" }
-    - { path: "{{ project_root }}/.generated", mode: "0700" }
-    - { path: "{{ project_root }}/.generated/client", mode: "0700" }
-    - { path: "{{ project_root }}/.generated/server", mode: "0700" }
+    - { path: "{{ xray_project_root }}" }
+    - { path: "{{ xray_project_root }}/client" }
+    - { path: "{{ xray_project_root }}/scripts" }
+    - { path: "{{ xray_project_root }}/server" }
+    - { path: "{{ xray_project_root }}/.generated", mode: "0700" }
+    - { path: "{{ xray_project_root }}/.generated/client", mode: "0700" }
+    - { path: "{{ xray_project_root }}/.generated/server", mode: "0700" }
   tags: ['always']
 
 - name: Upload repository files needed on the target host
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../{{ item.src }}"
-    dest: "{{ project_root }}/{{ item.dest }}"
+    dest: "{{ xray_project_root }}/{{ item.dest }}"
     owner: "{{ xray_deploy_user }}"
     group: "{{ xray_deploy_group }}"
     mode: "{{ item.mode }}"
@@ -50,7 +50,7 @@
 - name: Upload project directories needed on the target host
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../{{ item }}/"
-    dest: "{{ project_root }}/{{ item }}/"
+    dest: "{{ xray_project_root }}/{{ item }}/"
     owner: "{{ xray_deploy_user }}"
     group: "{{ xray_deploy_group }}"
     directory_mode: "0755"
@@ -63,13 +63,13 @@
 
 - name: Check for an existing remote env file
   ansible.builtin.stat:
-    path: "{{ project_root }}/.env"
+    path: "{{ xray_project_root }}/.env"
   register: xray_env_file
   tags: ['always']
 
 - name: Read current remote env values
   ansible.builtin.shell: |
-    awk -F= '$1 == "{{ item }}" {sub(/^[^=]*=/, ""); print; exit}' "{{ project_root }}/.env"
+    awk -F= '$1 == "{{ item }}" {sub(/^[^=]*=/, ""); print; exit}' "{{ xray_project_root }}/.env"
   args:
     executable: /bin/sh
   loop:
@@ -97,6 +97,7 @@
   register: xray_generated_client_uuid
   changed_when: false
   when:
+    - not ansible_check_mode
     - (xray_client_uuid | default('')) | length == 0
     - (xray_existing_secrets.XRAY_CLIENT_UUID | default('')) | length == 0
   tags: ['always', 'rotate-secrets']
@@ -106,6 +107,7 @@
   register: xray_generated_short_id
   changed_when: false
   when:
+    - not ansible_check_mode
     - (xray_reality_short_id | default('')) | length == 0
     - (xray_existing_secrets.XRAY_REALITY_SHORT_ID | default('')) | length == 0
   tags: ['always', 'rotate-secrets']
@@ -115,6 +117,7 @@
   register: xray_generated_socks_user
   changed_when: false
   when:
+    - not ansible_check_mode
     - (xray_telegram_socks_user | default('')) | length == 0
     - (xray_existing_secrets.XRAY_TELEGRAM_SOCKS_USER | default('')) | length == 0
   tags: ['always', 'rotate-secrets']
@@ -124,6 +127,7 @@
   register: xray_generated_socks_pass
   changed_when: false
   when:
+    - not ansible_check_mode
     - (xray_telegram_socks_pass | default('')) | length == 0
     - (xray_existing_secrets.XRAY_TELEGRAM_SOCKS_PASS | default('')) | length == 0
   tags: ['always', 'rotate-secrets']
@@ -137,6 +141,7 @@
   register: xray_generated_reality_private_key
   changed_when: false
   when:
+    - not ansible_check_mode
     - (xray_reality_private_key | default('')) | length == 0
     - (xray_existing_secrets.XRAY_REALITY_PRIVATE_KEY | default('')) | length == 0
   tags: ['always', 'rotate-secrets']
@@ -154,7 +159,15 @@
       {{
         xray_client_uuid
         if (xray_client_uuid | default('')) | length > 0
-        else (xray_existing_secrets.XRAY_CLIENT_UUID | default(xray_generated_client_uuid.stdout | default('')))
+        else (
+          xray_existing_secrets.XRAY_CLIENT_UUID
+          | default(
+            xray_generated_client_uuid.stdout
+            | default(
+              xray_check_mode_placeholder_uuid if ansible_check_mode else ''
+            )
+          )
+        )
       }}
     xray_effective_reality_private_key: >-
       {{
@@ -162,26 +175,55 @@
         if (xray_reality_private_key | default('')) | length > 0
         else (
           xray_existing_secrets.XRAY_REALITY_PRIVATE_KEY
-          | default(xray_generated_reality_private_key.stdout | default(''))
+          | default(
+            xray_generated_reality_private_key.stdout
+            | default(
+              xray_check_mode_placeholder_private_key if ansible_check_mode else ''
+            )
+          )
         )
       }}
     xray_effective_reality_short_id: >-
       {{
         xray_reality_short_id
         if (xray_reality_short_id | default('')) | length > 0
-        else (xray_existing_secrets.XRAY_REALITY_SHORT_ID | default(xray_generated_short_id.stdout | default('')))
+        else (
+          xray_existing_secrets.XRAY_REALITY_SHORT_ID
+          | default(
+            xray_generated_short_id.stdout
+            | default(
+              xray_check_mode_placeholder_short_id if ansible_check_mode else ''
+            )
+          )
+        )
       }}
     xray_effective_telegram_socks_user: >-
       {{
         xray_telegram_socks_user
         if (xray_telegram_socks_user | default('')) | length > 0
-        else (xray_existing_secrets.XRAY_TELEGRAM_SOCKS_USER | default(xray_generated_socks_user.stdout | default('')))
+        else (
+          xray_existing_secrets.XRAY_TELEGRAM_SOCKS_USER
+          | default(
+            xray_generated_socks_user.stdout
+            | default(
+              xray_check_mode_placeholder_socks_user if ansible_check_mode else ''
+            )
+          )
+        )
       }}
     xray_effective_telegram_socks_pass: >-
       {{
         xray_telegram_socks_pass
         if (xray_telegram_socks_pass | default('')) | length > 0
-        else (xray_existing_secrets.XRAY_TELEGRAM_SOCKS_PASS | default(xray_generated_socks_pass.stdout | default('')))
+        else (
+          xray_existing_secrets.XRAY_TELEGRAM_SOCKS_PASS
+          | default(
+            xray_generated_socks_pass.stdout
+            | default(
+              xray_check_mode_placeholder_socks_pass if ansible_check_mode else ''
+            )
+          )
+        )
       }}
   no_log: true
   tags: ['always', 'rotate-secrets']
@@ -201,7 +243,7 @@
 - name: Render remote env file
   ansible.builtin.template:
     src: env.j2
-    dest: "{{ project_root }}/.env"
+    dest: "{{ xray_project_root }}/.env"
     owner: "{{ xray_deploy_user }}"
     group: "{{ xray_deploy_group }}"
     mode: "0600"
@@ -211,17 +253,18 @@
 - name: Render Xray config and client artifacts
   ansible.builtin.command: ./scripts/render-config.sh
   args:
-    chdir: "{{ project_root }}"
+    chdir: "{{ xray_project_root }}"
   environment:
-    ENV_FILE: "{{ project_root }}/.env"
+    ENV_FILE: "{{ xray_project_root }}/.env"
   register: xray_render
   changed_when: true
+  when: not ansible_check_mode
   tags: ['always', 'rotate-secrets']
 
 - name: Pull the configured Xray image
   ansible.builtin.command: docker compose -f compose.yaml pull
   args:
-    chdir: "{{ project_root }}"
+    chdir: "{{ xray_project_root }}"
   register: xray_pull
   changed_when: "'Downloaded' in xray_pull.stdout or 'Pulling' in xray_pull.stdout or 'Pulled' in xray_pull.stdout"
   when: xray_pull_image
@@ -230,9 +273,10 @@
 - name: Run docker compose up
   ansible.builtin.command: docker compose -f compose.yaml up -d
   args:
-    chdir: "{{ project_root }}"
+    chdir: "{{ xray_project_root }}"
   register: xray_up
   changed_when: "'Started' in xray_up.stdout or 'Recreated' in xray_up.stdout or 'Creating' in xray_up.stdout"
+  when: not ansible_check_mode
   tags: ['always', 'rotate-secrets']
 
 - name: Wait for Xray container to become healthy
@@ -248,26 +292,31 @@
   delay: 2
   until: xray_container_health.stdout in ['healthy', 'running']
   changed_when: false
+  when: not ansible_check_mode
   tags: ['always']
 
 - name: Validate compose and Xray config
   ansible.builtin.command: ./scripts/validate.sh
   args:
-    chdir: "{{ project_root }}"
+    chdir: "{{ xray_project_root }}"
   environment:
-    ENV_FILE: "{{ project_root }}/.env"
+    ENV_FILE: "{{ xray_project_root }}/.env"
   changed_when: false
-  when: xray_run_validate
+  when:
+    - xray_run_validate
+    - not ansible_check_mode
   tags: ['always']
 
 - name: Run strict doctor checks
   ansible.builtin.command: ./scripts/doctor.sh --strict
   args:
-    chdir: "{{ project_root }}"
+    chdir: "{{ xray_project_root }}"
   environment:
-    ENV_FILE: "{{ project_root }}/.env"
+    ENV_FILE: "{{ xray_project_root }}/.env"
   changed_when: false
-  when: xray_run_doctor
+  when:
+    - xray_run_doctor
+    - not ansible_check_mode
   tags: ['always']
 
 - name: Ensure local client artifact directory exists
@@ -282,12 +331,14 @@
 
 - name: Fetch generated client artifacts to the controller
   ansible.builtin.fetch:
-    src: "{{ project_root }}/{{ item.remote }}"
+    src: "{{ xray_project_root }}/{{ item.remote }}"
     dest: "{{ xray_client_artifact_dir }}/{{ item.local }}"
     flat: true
   loop:
     - { remote: ".generated/client/connection-summary.txt", local: "connection-summary.txt" }
     - { remote: ".generated/client/shadowrocket-rules.conf", local: "shadowrocket-rules.conf" }
     - { remote: ".generated/client/shadowrocket-vless.txt", local: "shadowrocket-vless.txt" }
-  when: xray_fetch_client_artifacts
+  when:
+    - xray_fetch_client_artifacts
+    - not ansible_check_mode
   tags: ['always']
