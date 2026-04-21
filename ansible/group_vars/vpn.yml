@@ -1,0 +1,22 @@
+xray_compose_project_name: xray-vpn
+xray_container_name: xray-vpn
+xray_image_tag: "25.12.8"
+
+xray_log_level: warning
+xray_server_address: "{{ ansible_host }}"
+
+xray_vless_port: 8443
+xray_reality_dest: www.cloudflare.com:443
+xray_reality_server_name: www.cloudflare.com
+
+xray_telegram_socks_port: 29418
+
+# Optional secret overrides. If left empty, the deploy role preserves the
+# existing remote value or generates a new one on the first run.
+xray_client_uuid: ""
+xray_reality_private_key: ""
+xray_reality_short_id: ""
+xray_telegram_socks_user: ""
+xray_telegram_socks_pass: ""
+
+xray_env_extra: {}

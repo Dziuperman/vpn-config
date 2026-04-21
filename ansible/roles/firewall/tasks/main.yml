@@ -1,0 +1,28 @@
+- name: Add SSH and VPN allow rules to ufw
+  when: xray_manage_firewall
+  block:
+    - name: Read current ufw status
+      ansible.builtin.command: ufw status
+      register: ufw_status
+      changed_when: false
+      failed_when: false
+
+    - name: Allow SSH and VPN traffic
+      ansible.builtin.command: "ufw allow {{ item }}"
+      loop:
+        - "{{ xray_firewall_ssh_port }}/tcp"
+        - "{{ xray_vless_port }}/tcp"
+        - "{{ xray_telegram_socks_port }}/tcp"
+        - "{{ xray_telegram_socks_port }}/udp"
+      register: ufw_allow_rules
+      changed_when: "'Rule added' in ufw_allow_rules.stdout or 'Rules updated' in ufw_allow_rules.stdout"
+      failed_when:
+        - ufw_allow_rules.rc != 0
+        - "'Rule added' not in ufw_allow_rules.stdout"
+        - "'Skipping adding existing rule' not in ufw_allow_rules.stdout"
+        - "'Rules updated' not in ufw_allow_rules.stdout"
+
+    - name: Warn when ufw is inactive
+      ansible.builtin.debug:
+        msg: "ufw is inactive on the target host. Xray allow rules were added, but firewall activation remains a manual decision."
+      when: "'Status: inactive' in ufw_status.stdout"

@@ -114,7 +114,9 @@ detect_server_address() {
 build_public_key() {
   image="ghcr.io/xtls/xray-core:${XRAY_IMAGE_TAG:-25.12.8}"
   docker run --rm --entrypoint xray "$image" x25519 -i "$XRAY_REALITY_PRIVATE_KEY" 2>/dev/null \
-    | awk -F': ' '/^Password:/ {print $2}'
+    | awk -F': ' '
+        $1 == "PublicKey" || $1 == "Public key" || $1 == "Password" { print $2; exit }
+      '
 }
 
 render_template() {

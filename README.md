@@ -2,6 +2,8 @@
 
 Этот репозиторий разворачивает Xray VPN на сервере одной командой. В git хранится только шаблон конфига и инфраструктура деплоя. Рабочий `config.json`, секреты и клиентские параметры генерируются локально на сервере.
 
+Дополнительно в репозитории есть `ansible/` слой для reproducible provisioning и idempotent deploy на Ubuntu/Debian VPS без ручной рутины на хосте.
+
 ## Что внутри
 
 - `compose.yaml` поднимает один production-сервис `xray` на официальном образе `ghcr.io/xtls/xray-core`.
@@ -12,6 +14,8 @@
 - `scripts/bootstrap.sh` создает `.env`, генерирует секреты, рендерит конфиг и запускает контейнер.
 - `scripts/validate.sh` проверяет `compose` и валидирует Xray-конфиг через официальный контейнер.
 - `scripts/doctor.sh` диагностирует уже настроенный сервер и deployment state.
+- `ansible/playbooks/provision.yml` приводит хост к ожидаемому системному состоянию.
+- `ansible/playbooks/deploy.yml` управляет `.env`, deploy flow и post-deploy verify.
 - `.generated/` содержит только локально сгенерированные артефакты и не коммитится.
 
 ## Требования
@@ -45,6 +49,55 @@ cd vpn-config
 11. запускает post-deploy doctor check
 
 Если Docker уже установлен, `./vpn install` пропускает host bootstrap и сразу переходит к deployment flow.
+
+## Когда использовать Ansible
+
+Для одного VPS shell workflow через `./vpn` остаётся нормальным быстрым путём.
+
+`Ansible` нужен, когда важны:
+
+- воспроизводимый bootstrap нового сервера;
+- отсутствие ручного drift в Docker/firewall/system state;
+- повторяемый deploy через inventory вместо ручных шагов на хосте;
+- удобный переход к нескольким серверам или окружениям.
+
+Профессиональная схема в этом репозитории теперь такая:
+
+- `./vpn` и `scripts/*` остаются application-specific runtime tooling;
+- `ansible/` отвечает за host provisioning, `.env` orchestration и repeatable deploy.
+
+Базовый поток:
+
+```sh
+cd ansible
+ansible-playbook playbooks/provision.yml -l vpn-prod
+ansible-playbook playbooks/deploy.yml -l vpn-prod
+```
+
+Что именно делает `ansible/`:
+
+- ставит базовые пакеты, Docker Engine и Compose plugin;
+- добавляет allow rules для SSH и VPN в `ufw`, не меняя default policy и не включая firewall автоматически;
+- раскладывает проект в `project_root`;
+- сохраняет существующие секреты из удалённого `.env` или генерирует новые на первом запуске;
+- рендерит `config.json`, запускает `docker compose up -d`, ждёт healthy state;
+- переиспользует `scripts/validate.sh` и `scripts/doctor.sh` для проверки результата.
+
+Структура настроек:
+
+- `ansible/group_vars/vpn.yml` содержит общие defaults;
+- `ansible/host_vars/vpn-prod.yml.example` показывает рекомендуемый per-host формат, а playbooks явно подгружают `ansible/host_vars/<host>.yml`;
+- реальные `ansible/host_vars/*.yml` игнорируются в git, чтобы не утекали production secrets.
+
+Если хочешь контролируемые и предсказуемые секреты, храни их в `host_vars` или `Ansible Vault`.
+Если секреты не заданы, первый deploy сгенерирует их на удалённом сервере и затем будет переиспользовать без ротации.
+
+`Ansible` firewall management в `ansible/` работает в additive-режиме:
+
+- playbook только добавляет allow rules для SSH и Xray;
+- не включает `ufw` автоматически;
+- не меняет default incoming/outgoing policy;
+- это безопаснее для VPS, где уже есть ручные правила или другие сервисы.
 
 ## CLI
 

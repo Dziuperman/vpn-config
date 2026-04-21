@@ -1,0 +1,11 @@
+# Copy this file to ansible/host_vars/vpn-prod.yml and replace the values.
+ansible_host: 198.51.100.10
+ansible_user: root
+
+# Recommended when you want stable, controller-managed secrets.
+xray_server_address: vpn.example.com
+xray_client_uuid: 11111111-1111-1111-1111-111111111111
+xray_reality_private_key: <xray-reality-private-key>
+xray_reality_short_id: 0123456789abcdef
+xray_telegram_socks_user: vpnuser
+xray_telegram_socks_pass: <strong-password>

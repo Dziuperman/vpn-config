@@ -97,6 +97,14 @@ generate_reality_keys() {
   docker run --rm --entrypoint xray "$image" x25519
 }
 
+extract_x25519_value() {
+  label_type=$1
+  awk -F': ' -v label_type="$label_type" '
+    label_type == "private" && ($1 == "PrivateKey" || $1 == "Private key") { print $2; exit }
+    label_type == "public" && ($1 == "PublicKey" || $1 == "Public key" || $1 == "Password") { print $2; exit }
+  '
+}
+
 ensure_env_value() {
   key=$1
   current_value=$2
@@ -122,8 +130,8 @@ ensure_defaults() {
   load_env_required
   if [ -z "${XRAY_REALITY_PRIVATE_KEY:-}" ]; then
     keys_output=$(generate_reality_keys)
-    private_key=$(printf '%s\n' "$keys_output" | awk -F': ' '/^PrivateKey:/ {print $2}')
-    public_key=$(printf '%s\n' "$keys_output" | awk -F': ' '/^Password:/ {print $2}')
+    private_key=$(printf '%s\n' "$keys_output" | extract_x25519_value private)
+    public_key=$(printf '%s\n' "$keys_output" | extract_x25519_value public)
     upsert_env XRAY_REALITY_PRIVATE_KEY "$private_key"
     log_info "Generated XRAY_REALITY_PRIVATE_KEY"
     log_info "Derived REALITY public key: $public_key"
