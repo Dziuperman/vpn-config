@@ -87,9 +87,10 @@ ansible-playbook playbooks/deploy.yml -l vpn-prod
 
 - `ansible/inventory/group_vars/vpn.yml` содержит общие defaults;
 - `ansible/inventory/host_vars/vpn-prod.yml.example` показывает рекомендуемый per-host формат;
+- `ansible/inventory/host_vars/vpn-prod.vault.yml.example` показывает рекомендуемый encrypted secrets format;
 - реальные `ansible/inventory/host_vars/*.yml` игнорируются в git, чтобы не утекали production secrets.
 
-Если хочешь контролируемые и предсказуемые секреты, храни их в `host_vars` или `Ansible Vault`.
+Если хочешь контролируемые и предсказуемые секреты, храни их в `ansible/inventory/host_vars/<host>.vault.yml` через `Ansible Vault`.
 Если секреты не заданы, первый deploy сгенерирует их на удалённом сервере и затем будет переиспользовать без ротации.
 
 `Ansible` firewall management в `ansible/` работает в additive-режиме:
@@ -103,8 +104,11 @@ Precedence у Ansible-слоя такая:
 
 - `ansible/inventory/group_vars/*.yml` задаёт defaults;
 - `ansible/inventory/host_vars/<host>.yml` переопределяет их для конкретного сервера;
+- `ansible/inventory/host_vars/<host>.vault.yml` хранит production secrets и чувствительные overrides;
 - playbook рендерит итоговый удалённый `.env`;
 - `compose.yaml` и `scripts/*` только потребляют итоговый `.env`.
+
+Для production-доступа к VPS лучше использовать SSH keys, а не пароль. В Ansible-слое теперь есть поддержка отдельного deploy user с `sudo`, если захочешь уйти от прямого `root`-доступа.
 
 ## CLI
 

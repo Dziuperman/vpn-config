@@ -1,6 +1,13 @@
 xray_project_root: /opt/xray-vpn
 xray_deploy_user: root
 xray_deploy_group: root
+xray_manage_deploy_user: false
+xray_deploy_user_name: xray-deploy
+xray_deploy_user_groups:
+  - sudo
+xray_deploy_user_shell: /bin/bash
+xray_deploy_user_authorized_keys: []
+xray_deploy_user_passwordless_sudo: true
 xray_manage_firewall: true
 xray_pull_image: true
 xray_run_validate: true

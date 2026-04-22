@@ -19,3 +19,35 @@
     owner: "{{ xray_deploy_user }}"
     group: "{{ xray_deploy_group }}"
     mode: "0755"
+
+- name: Ensure deploy user exists when managed
+  ansible.builtin.user:
+    name: "{{ xray_deploy_user_name }}"
+    groups: "{{ xray_deploy_user_groups }}"
+    append: true
+    shell: "{{ xray_deploy_user_shell }}"
+    create_home: true
+    state: present
+  when: xray_manage_deploy_user
+
+- name: Install deploy user authorized keys
+  ansible.posix.authorized_key:
+    user: "{{ xray_deploy_user_name }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ xray_deploy_user_authorized_keys }}"
+  when:
+    - xray_manage_deploy_user
+    - xray_deploy_user_authorized_keys | length > 0
+
+- name: Grant passwordless sudo to deploy user when enabled
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ xray_deploy_user_name }}"
+    owner: root
+    group: root
+    mode: "0440"
+    content: "{{ xray_deploy_user_name }} ALL=(ALL) NOPASSWD:ALL\n"
+    validate: "visudo -cf %s"
+  when:
+    - xray_manage_deploy_user
+    - xray_deploy_user_passwordless_sudo

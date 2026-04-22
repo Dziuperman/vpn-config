@@ -1,0 +1,11 @@
+# Encrypt the real file with:
+#   ansible-vault encrypt ansible/inventory/host_vars/vpn-prod.vault.yml
+#
+# Edit it later with:
+#   ansible-vault edit ansible/inventory/host_vars/vpn-prod.vault.yml
+
+xray_client_uuid: 11111111-1111-1111-1111-111111111111
+xray_reality_private_key: <xray-reality-private-key>
+xray_reality_short_id: 0123456789abcdef
+xray_telegram_socks_user: vpnuser
+xray_telegram_socks_pass: <strong-password>
