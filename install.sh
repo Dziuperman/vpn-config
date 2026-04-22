@@ -2,6 +2,8 @@
 
 set -eu
 
+printf '%s\n' "Warning: install.sh is a legacy local convenience entrypoint. Prefer ansible/playbooks/provision.yml and ansible/playbooks/deploy.yml for managed deployments." >&2
+
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
 . "$ROOT_DIR/scripts/common.sh"

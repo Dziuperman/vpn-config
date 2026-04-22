@@ -2,6 +2,18 @@
   ansible.builtin.meta: reset_connection
   tags: ['always']
 
+- name: Check whether the managed container already exists
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - "{{ xray_container_name }}"
+  register: xray_existing_container
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+  tags: ['always']
+
 - name: Validate mandatory deploy variables
   ansible.builtin.assert:
     that:
@@ -13,6 +25,26 @@
       - xray_reality_dest | length > 0
       - xray_reality_server_name | length > 0
     fail_msg: "Set the core Xray variables in inventory or group_vars before deploy."
+  tags: ['always']
+
+- name: Check registry reachability from the target host
+  ansible.builtin.uri:
+    url: https://ghcr.io/v2/
+    method: HEAD
+    timeout: 10
+    validate_certs: true
+  register: xray_registry_check
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+  tags: ['always']
+
+- name: Warn when registry reachability cannot be verified
+  ansible.builtin.debug:
+    msg: "Cannot verify ghcr.io reachability from the target host. Deploy may still succeed if Docker daemon networking is available."
+  when:
+    - not ansible_check_mode
+    - xray_registry_check.status | default(0) == 0
   tags: ['always']
 
 - name: Ensure deployment directories exist
@@ -30,6 +62,30 @@
     - { path: "{{ xray_project_root }}/.generated", mode: "0700" }
     - { path: "{{ xray_project_root }}/.generated/client", mode: "0700" }
     - { path: "{{ xray_project_root }}/.generated/server", mode: "0700" }
+  tags: ['always']
+
+- name: Check requested Xray ports before first deploy
+  ansible.builtin.shell: |
+    set -eu
+    for port in {{ xray_vless_port }} {{ xray_telegram_socks_port }}; do
+      if command -v ss >/dev/null 2>&1; then
+        if ss -lntu "( sport = :${port} )" 2>/dev/null | awk 'NR > 1 { found = 1 } END { exit(found ? 0 : 1) }'; then
+          echo "Port ${port} is already in use"
+          exit 1
+        fi
+      elif command -v lsof >/dev/null 2>&1; then
+        if lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1 || lsof -nP -iUDP:"${port}" >/dev/null 2>&1; then
+          echo "Port ${port} is already in use"
+          exit 1
+        fi
+      fi
+    done
+  args:
+    executable: /bin/sh
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - xray_existing_container.rc != 0
   tags: ['always']
 
 - name: Upload repository files needed on the target host
@@ -261,6 +317,14 @@
   when: not ansible_check_mode
   tags: ['always', 'rotate-secrets']
 
+- name: Validate docker compose configuration before runtime changes
+  ansible.builtin.command: docker compose -f compose.yaml config
+  args:
+    chdir: "{{ xray_project_root }}"
+  changed_when: false
+  when: not ansible_check_mode
+  tags: ['always']
+
 - name: Pull the configured Xray image
   ansible.builtin.command: docker compose -f compose.yaml pull
   args:
@@ -291,6 +355,24 @@
   retries: 30
   delay: 2
   until: xray_container_health.stdout in ['healthy', 'running']
+  changed_when: false
+  when: not ansible_check_mode
+  tags: ['always']
+
+- name: Verify published runtime ports after deploy
+  ansible.builtin.shell: |
+    set -eu
+    for port in {{ xray_vless_port }} {{ xray_telegram_socks_port }}; do
+      if command -v ss >/dev/null 2>&1; then
+        ss -lntu "( sport = :${port} )" 2>/dev/null | awk 'NR > 1 { found = 1 } END { exit(found ? 0 : 1) }'
+      elif command -v lsof >/dev/null 2>&1; then
+        lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1 || lsof -nP -iUDP:"${port}" >/dev/null 2>&1
+      else
+        exit 1
+      fi
+    done
+  args:
+    executable: /bin/sh
   changed_when: false
   when: not ansible_check_mode
   tags: ['always']

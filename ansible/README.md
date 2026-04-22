@@ -2,6 +2,8 @@
 
 Этот каталог добавляет reproducible provisioning/deploy слой поверх существующих shell-скриптов проекта.
 
+Для managed deployments `ansible/` является основным интерфейсом. Локальные `install.sh` и `scripts/install-host.sh` считаются legacy convenience entrypoints.
+
 ## Что делает Ansible
 
 - `playbooks/provision.yml` приводит Ubuntu/Debian VPS в нужное базовое состояние:
@@ -9,6 +11,8 @@
   - настраивает Docker Engine и Compose plugin,
   - добавляет `ufw` allow rules для SSH и Xray, не меняя default policy и не включая firewall автоматически.
 - `playbooks/deploy.yml` раскладывает проект на удалённый хост, управляет `.env`, сохраняет существующие секреты или генерирует новые на первом запуске, рендерит Xray-конфиг и выполняет deploy/verify flow.
+
+Host-level provisioning и deploy preflight теперь живут в Ansible. Shell-скрипты оставлены для application-specific runtime logic и локального `./vpn` workflow.
 
 ## Ожидаемая модель эксплуатации
 
@@ -44,6 +48,7 @@ ansible-playbook playbooks/deploy.yml -l vpn-prod --ask-vault-pass
 ## Замечания
 
 - `deploy.yml` сознательно переиспользует существующие `scripts/render-config.sh`, `scripts/validate.sh` и `scripts/doctor.sh`, чтобы не дублировать application-specific логику.
+- Портовые preflight-проверки, registry reachability warning, compose config check и runtime port verification выполняются Ansible-задачами, а не shell host bootstrap-скриптами.
 - Повторный запуск `deploy.yml` не должен ротировать секреты, если они уже есть в `*.vault.yml` или в удалённом `.env`.
 - Для контролируемой ротации секретов задай новые значения в `*.vault.yml` и повторно выполни `deploy.yml`.
 - `xray_manage_firewall: true` работает в additive-режиме: роль только добавляет allow rules для SSH/VPN и не берёт весь `ufw` под полное управление.

@@ -28,6 +28,18 @@
 
 ## Быстрый старт
 
+Предпочтительный production-путь теперь это `Ansible`.
+
+```sh
+cd ansible
+ansible-playbook playbooks/provision.yml -l vpn-prod --ask-vault-pass
+ansible-playbook playbooks/deploy.yml -l vpn-prod --ask-vault-pass
+```
+
+Локальный shell workflow через `./vpn install` остаётся как convenience/legacy path.
+
+## Legacy Quick Start
+
 ```sh
 git clone <your-repo-url>
 cd vpn-config
@@ -52,7 +64,7 @@ cd vpn-config
 
 ## Когда использовать Ansible
 
-Для одного VPS shell workflow через `./vpn` остаётся нормальным быстрым путём.
+Для одного VPS shell workflow через `./vpn` остаётся допустимым локальным путём, но для managed deployments основным считается `Ansible`.
 
 `Ansible` нужен, когда важны:
 
@@ -66,6 +78,11 @@ cd vpn-config
 - `./vpn` и `scripts/*` остаются application-specific runtime tooling;
 - `ansible/` отвечает за host provisioning, `.env` orchestration и repeatable deploy.
 
+Граница ответственности:
+
+- `Ansible` управляет host bootstrap, SSH/deploy-user access, firewall rules и repeatable deploy flow.
+- Shell-скрипты оставлены для runtime/application-specific logic и локального operator workflow.
+
 Базовый поток:
 
 ```sh
@@ -78,6 +95,7 @@ ansible-playbook playbooks/deploy.yml -l vpn-prod
 
 - ставит базовые пакеты, Docker Engine и Compose plugin;
 - добавляет allow rules для SSH и VPN в `ufw`, не меняя default policy и не включая firewall автоматически;
+- выполняет host-level deploy preflight: проверку занятости портов на первом deploy, compose config check и post-deploy runtime port verification;
 - раскладывает проект в `xray_project_root`;
 - сохраняет существующие секреты из удалённого `.env` или генерирует новые на первом запуске;
 - рендерит `config.json`, запускает `docker compose up -d`, ждёт healthy state;

@@ -2,6 +2,8 @@
 
 set -eu
 
+printf '%s\n' "Warning: scripts/install-host.sh is legacy host-bootstrap logic. Prefer ansible/playbooks/provision.yml for managed deployments." >&2
+
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 # shellcheck disable=SC1091
 . "$ROOT_DIR/scripts/common.sh"
