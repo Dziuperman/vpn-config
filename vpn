@@ -6,19 +6,20 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
 . "$ROOT_DIR/scripts/common.sh"
 
-INSTALL_SCRIPT="$ROOT_DIR/install.sh"
-BOOTSTRAP_SCRIPT="$ROOT_DIR/scripts/bootstrap.sh"
 PREFLIGHT_SCRIPT="$ROOT_DIR/scripts/preflight.sh"
 DOCTOR_SCRIPT="$ROOT_DIR/scripts/doctor.sh"
 VALIDATE_SCRIPT="$ROOT_DIR/scripts/validate.sh"
+ANSIBLE_DIR="$ROOT_DIR/ansible"
+ANSIBLE_LIMIT="${VPN_ANSIBLE_LIMIT:-vpn-prod}"
 CLIENT_SUMMARY_FILE="$ROOT_DIR/.generated/client/connection-summary.txt"
 CLIENT_SHADOWROCKET_RULES_FILE="$ROOT_DIR/.generated/client/shadowrocket-rules.conf"
 CLIENT_URI_FILE="$ROOT_DIR/.generated/client/shadowrocket-vless.txt"
 SHADOWROCKET_RULES_URL="https://raw.githubusercontent.com/Dziuperman/vpn-config/refs/heads/main/client/shadowrocket/default.conf"
 
 OVERRIDES_FILE=$(mktemp)
+ANSIBLE_ARGS_FILE=$(mktemp)
 TEMP_ENV_FILE=""
-trap 'rm -f "$OVERRIDES_FILE" ${TEMP_ENV_FILE:+"$TEMP_ENV_FILE"}' EXIT
+trap 'rm -f "$OVERRIDES_FILE" "$ANSIBLE_ARGS_FILE" ${TEMP_ENV_FILE:+"$TEMP_ENV_FILE"}' EXIT
 
 usage() {
   cat <<'EOF'
@@ -47,6 +48,10 @@ Flags for install/deploy/preflight:
   --log-level <value>
   --reality-dest <value>
   --reality-server-name <value>
+
+Pass extra Ansible arguments to install/deploy after `--`:
+  ./vpn install --vless-port 20443 -- --ask-vault-pass -k
+  ./vpn deploy -- --vault-password-file .vault_pass.txt
 
 Flags for doctor:
   --strict
@@ -89,6 +94,10 @@ append_override() {
   printf '%s=%s\n' "$1" "$2" >> "$OVERRIDES_FILE"
 }
 
+append_ansible_arg() {
+  printf '%s\n' "$1" >> "$ANSIBLE_ARGS_FILE"
+}
+
 apply_overrides_to_file() {
   target_file=$1
 
@@ -122,6 +131,67 @@ run_script_with_env() {
   ENV_FILE="$TEMP_ENV_FILE" "$script" "$@"
 }
 
+require_ansible() {
+  command -v ansible-playbook >/dev/null 2>&1 || fail "Missing required command: ansible-playbook"
+  [ -d "$ANSIBLE_DIR" ] || fail "Missing ansible directory: $ANSIBLE_DIR"
+}
+
+build_ansible_extra_vars_file() {
+  output_file=$(mktemp)
+
+  if [ ! -s "$OVERRIDES_FILE" ]; then
+    printf '%s\n' "$output_file"
+    return 0
+  fi
+
+  while IFS='=' read -r key value; do
+    [ -n "$key" ] || continue
+
+    case "$key" in
+      XRAY_SERVER_ADDRESS) ansible_key=xray_server_address ;;
+      XRAY_VLESS_PORT) ansible_key=xray_vless_port ;;
+      XRAY_TELEGRAM_SOCKS_PORT) ansible_key=xray_telegram_socks_port ;;
+      XRAY_IMAGE_TAG) ansible_key=xray_image_tag ;;
+      XRAY_LOG_LEVEL) ansible_key=xray_log_level ;;
+      XRAY_REALITY_DEST) ansible_key=xray_reality_dest ;;
+      XRAY_REALITY_SERVER_NAME) ansible_key=xray_reality_server_name ;;
+      *) fail "Unsupported override key for Ansible wrapper: $key" ;;
+    esac
+
+    printf "%s: '%s'\n" "$ansible_key" "$(printf '%s' "$value" | sed "s/'/''/g")" >> "$output_file"
+  done < "$OVERRIDES_FILE"
+
+  printf '%s\n' "$output_file"
+}
+
+run_ansible_playbook() {
+  playbook_file=$1
+  shift
+
+  require_ansible
+  extra_vars_file=$(build_ansible_extra_vars_file)
+  set -- ansible-playbook "$playbook_file" -l "$ANSIBLE_LIMIT" "$@"
+
+  if [ -s "$extra_vars_file" ]; then
+    set -- "$@" --extra-vars "@$extra_vars_file"
+  fi
+
+  while IFS= read -r arg; do
+    set -- "$@" "$arg"
+  done < "$ANSIBLE_ARGS_FILE"
+
+  if (
+    cd "$ANSIBLE_DIR"
+    "$@"
+  ); then
+    rc=0
+  else
+    rc=$?
+  fi
+  rm -f "$extra_vars_file"
+  return "$rc"
+}
+
 require_generated_file() {
   [ -f "$1" ] || fail "Missing generated file: $1"
 }
@@ -129,6 +199,14 @@ require_generated_file() {
 parse_override_flags() {
   while [ $# -gt 0 ]; do
     case "$1" in
+      --)
+        shift
+        while [ $# -gt 0 ]; do
+          append_ansible_arg "$1"
+          shift
+        done
+        return 0
+        ;;
       --server-address)
         [ $# -ge 2 ] || fail_usage "Missing value for $1"
         append_override XRAY_SERVER_ADDRESS "$2"
@@ -173,16 +251,13 @@ parse_override_flags() {
 
 run_install() {
   parse_override_flags "$@"
-  ensure_env_file_exists
-  apply_overrides_to_file "$ENV_FILE"
-  "$INSTALL_SCRIPT"
+  run_ansible_playbook playbooks/provision.yml
+  run_ansible_playbook playbooks/deploy.yml
 }
 
 run_deploy() {
   parse_override_flags "$@"
-  ensure_env_file_exists
-  apply_overrides_to_file "$ENV_FILE"
-  "$BOOTSTRAP_SCRIPT"
+  run_ansible_playbook playbooks/deploy.yml
 }
 
 run_preflight() {

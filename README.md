@@ -8,8 +8,7 @@
 
 - `compose.yaml` поднимает один production-сервис `xray` на официальном образе `ghcr.io/xtls/xray-core`.
 - `server/config.template.json` хранит шаблон Xray-конфига для `VLESS + REALITY` и отдельного `telegram-socks` inbound.
-- `install.sh` подготавливает хост при необходимости и запускает полный деплой.
-- `scripts/install-host.sh` устанавливает Docker/Compose и открывает нужные порты через `ufw` на Ubuntu/Debian.
+- `install.sh` и `scripts/install-host.sh` сохранены как legacy entrypoints.
 - `scripts/preflight.sh` делает non-mutating preflight-checks перед первым деплоем.
 - `scripts/bootstrap.sh` создает `.env`, генерирует секреты, рендерит конфиг и запускает контейнер.
 - `scripts/validate.sh` проверяет `compose` и валидирует Xray-конфиг через официальный контейнер.
@@ -43,28 +42,20 @@ ansible-playbook playbooks/deploy.yml -l vpn-prod --ask-vault-pass
 ```sh
 git clone <your-repo-url>
 cd vpn-config
-./vpn install
+./vpn install -- --ask-vault-pass
 ```
 
-Скрипт:
+`./vpn install` и `./vpn deploy` теперь thin wrappers над Ansible playbooks:
 
 1. запускает preflight-проверки
-2. при необходимости устанавливает Docker и Compose plugin
-3. настраивает `ufw` и открывает порты VPN, не ломая существующие правила
-4. создает `.env` из `.env.example`, если файла еще нет
-5. генерирует UUID, REALITY private key, short ID и SOCKS credentials
-6. рендерит `.generated/server/config.json`
-7. запускает `docker compose up -d`
-8. ждет healthy status контейнера и проверяет опубликованные порты
-9. пишет клиентские параметры в `.generated/client/connection-summary.txt`
-10. генерирует отдельно `Shadowrocket` rules profile и отдельно `vless://` import link для node
-11. запускает post-deploy doctor check
-
-Если Docker уже установлен, `./vpn install` пропускает host bootstrap и сразу переходит к deployment flow.
+2. вызывает `ansible/playbooks/provision.yml` для `install`
+3. вызывает `ansible/playbooks/deploy.yml`
+4. передаёт Xray override flags как Ansible extra vars
+5. допускает дополнительные Ansible args после `--`, например `-k` или `--ask-vault-pass`
 
 ## Когда использовать Ansible
 
-Для одного VPS shell workflow через `./vpn` остаётся допустимым локальным путём, но для managed deployments основным считается `Ansible`.
+Для одного VPS `./vpn` остаётся допустимым локальным операторским интерфейсом, но `install/deploy` внутри него теперь используют `Ansible`, а для managed deployments основным считается прямой `ansible-playbook`.
 
 `Ansible` нужен, когда важны:
 
@@ -81,6 +72,7 @@ cd vpn-config
 Граница ответственности:
 
 - `Ansible` управляет host bootstrap, SSH/deploy-user access, firewall rules и repeatable deploy flow.
+- `./vpn install` и `./vpn deploy` являются thin wrappers над Ansible.
 - Shell-скрипты оставлены для runtime/application-specific logic и локального operator workflow.
 
 Базовый поток:
@@ -151,8 +143,8 @@ Precedence у Ansible-слоя такая:
 Для `install`, `deploy` и `preflight` доступны флаги:
 
 ```sh
-./vpn install --vless-port 9443 --server-address vpn.example.com
-./vpn deploy --image-tag 25.12.8
+./vpn install --vless-port 9443 --server-address vpn.example.com -- --ask-vault-pass -k
+./vpn deploy --image-tag 25.12.8 -- --vault-password-file ansible/.vault_pass.txt
 ```
 
 Поддерживаемые флаги:
@@ -165,36 +157,38 @@ Precedence у Ansible-слоя такая:
 - `--reality-dest`
 - `--reality-server-name`
 
+Для `install` и `deploy` дополнительные Ansible args передаются после `--`.
+
 ## Примеры запуска
 
 Стандартный деплой:
 
 ```sh
-./vpn install
+./vpn install -- --ask-vault-pass
 ```
 
 Деплой с явным адресом сервера:
 
 ```sh
-./vpn install --server-address vpn.example.com
+./vpn install --server-address vpn.example.com -- --ask-vault-pass
 ```
 
 Деплой на нестандартном VLESS-порту:
 
 ```sh
-./vpn install --vless-port 9443
+./vpn install --vless-port 9443 -- --ask-vault-pass
 ```
 
 Деплой, если на сервере уже заняты и VLESS, и SOCKS порты:
 
 ```sh
-./vpn install --vless-port 9443 --telegram-socks-port 29419
+./vpn install --vless-port 9443 --telegram-socks-port 29419 -- --ask-vault-pass
 ```
 
 Повторный деплой только runtime-части без host bootstrap:
 
 ```sh
-./vpn deploy --vless-port 9443 --telegram-socks-port 29419
+./vpn deploy --vless-port 9443 --telegram-socks-port 29419 -- --ask-vault-pass
 ```
 
 Смена порта после первого запуска:
@@ -202,7 +196,7 @@ Precedence у Ansible-слоя такая:
 ```sh
 ./vpn env set XRAY_VLESS_PORT 9443
 ./vpn env set XRAY_TELEGRAM_SOCKS_PORT 29419
-./vpn deploy
+./vpn deploy -- --ask-vault-pass
 ```
 
 Быстрая проверка перед деплоем с параметрами, без изменений на сервере:
@@ -227,7 +221,7 @@ Precedence у Ansible-слоя такая:
 Полный повторный деплой:
 
 ```sh
-./vpn install
+./vpn install -- --ask-vault-pass
 ```
 
 Первичная валидация:
@@ -274,7 +268,7 @@ Preflight без изменений на хосте:
 
 ## Клиентские данные
 
-После `bootstrap` готовые параметры лежат в `.generated/client/connection-summary.txt`.
+После runtime deploy готовые параметры лежат в `.generated/client/connection-summary.txt`.
 
 Готовые клиентские артефакты:
 
@@ -324,13 +318,14 @@ Preflight без изменений на хосте:
 apt-get update && apt-get install -y git
 git clone <your-repo-url>
 cd vpn-config
-./vpn install
+./vpn install -- --ask-vault-pass
 ```
 
-Если работаешь не под `root`, скрипт использует `sudo` для установки Docker и firewall.
+Если используешь SSH password auth или vault, передай нужные Ansible args после `--`, например `./vpn install -- --ask-vault-pass -k`.
 
 ## Надёжность деплоя
 
+- `./vpn install` и `./vpn deploy` проксируют Ansible playbooks; runtime-команды `status`, `logs`, `restart`, `client`, `env`, `validate` и `doctor` остаются локальными.
 - Повторный `./vpn install` безопасен: существующие секреты в `.env` не перегенерируются.
 - `./vpn install` падает раньше, если порты заняты или если есть явный риск с `ufw` и SSH.
 - При проблемах post-deploy проверка выводит статус контейнера и последние логи.
