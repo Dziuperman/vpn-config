@@ -1,0 +1,301 @@
+- name: Check whether the managed TUIC container already exists
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - "{{ tuic_container_name }}"
+  register: tuic_existing_container
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+  tags: ['always']
+
+- name: Validate mandatory TUIC deploy variables
+  ansible.builtin.assert:
+    that:
+      - tuic_port | int > 0
+      - tuic_port | int < 65536
+      - tuic_server_address | length > 0
+    fail_msg: "Set the core TUIC variables in inventory or group_vars before deploy."
+  tags: ['always']
+
+- name: Apply host sysctl tuning for TUIC UDP workloads
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_set: true
+    reload: true
+  loop:
+    - { name: "net.core.rmem_max", value: "{{ tuic_sysctl_rmem_max }}" }
+    - { name: "net.core.wmem_max", value: "{{ tuic_sysctl_wmem_max }}" }
+    - { name: "net.core.rmem_default", value: "{{ tuic_sysctl_rmem_default }}" }
+    - { name: "net.core.wmem_default", value: "{{ tuic_sysctl_wmem_default }}" }
+    - { name: "net.ipv4.udp_rmem_min", value: "{{ tuic_sysctl_udp_rmem_min }}" }
+    - { name: "net.ipv4.udp_wmem_min", value: "{{ tuic_sysctl_udp_wmem_min }}" }
+  tags: ['always']
+
+- name: Ensure TUIC deployment directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(tuic_deploy_user) }}"
+    group: "{{ item.group | default(tuic_deploy_group) }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop:
+    - { path: "{{ tuic_project_root }}" }
+    - { path: "{{ tuic_project_root }}/scripts" }
+    - { path: "{{ tuic_project_root }}/server" }
+    - { path: "{{ tuic_project_root }}/.generated", mode: "0700" }
+    - { path: "{{ tuic_project_root }}/.generated/tuic", mode: "0700" }
+  tags: ['always']
+
+- name: Check requested TUIC port before first deploy
+  ansible.builtin.shell: |
+    set -eu
+    port="{{ tuic_port }}"
+    if command -v ss >/dev/null 2>&1; then
+      if ss -lnu "( sport = :${port} )" 2>/dev/null | awk 'NR > 1 { found = 1 } END { exit(found ? 0 : 1) }'; then
+        echo "Port ${port} is already in use"
+        exit 1
+      fi
+    elif command -v lsof >/dev/null 2>&1; then
+      if lsof -nP -iUDP:"${port}" >/dev/null 2>&1; then
+        echo "Port ${port} is already in use"
+        exit 1
+      fi
+    fi
+  args:
+    executable: /bin/sh
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - tuic_existing_container.rc != 0
+  tags: ['always']
+
+- name: Upload TUIC repository files needed on the target host
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../{{ item.src }}"
+    dest: "{{ tuic_project_root }}/{{ item.dest }}"
+    owner: "{{ tuic_deploy_user }}"
+    group: "{{ tuic_deploy_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: ".env.tuic.example", dest: ".env.tuic.example", mode: "0644" }
+    - { src: "compose.tuic.yaml", dest: "compose.tuic.yaml", mode: "0644" }
+  tags: ['always']
+
+- name: Upload TUIC project directories needed on the target host
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../{{ item }}/"
+    dest: "{{ tuic_project_root }}/{{ item }}/"
+    owner: "{{ tuic_deploy_user }}"
+    group: "{{ tuic_deploy_group }}"
+    directory_mode: "0755"
+    mode: preserve
+  loop:
+    - scripts
+    - server
+  tags: ['always']
+
+- name: Check for an existing remote TUIC env file
+  ansible.builtin.stat:
+    path: "{{ tuic_project_root }}/.env.tuic"
+  register: tuic_env_file
+  tags: ['always']
+
+- name: Read current remote TUIC env values
+  ansible.builtin.shell: |
+    awk -F= '$1 == "{{ item }}" {sub(/^[^=]*=/, ""); print; exit}' "{{ tuic_project_root }}/.env.tuic"
+  args:
+    executable: /bin/sh
+  loop:
+    - TUIC_UUID
+    - TUIC_PASSWORD
+  register: tuic_existing_secret_values
+  changed_when: false
+  no_log: true
+  when: tuic_env_file.stat.exists
+  tags: ['always']
+
+- name: Build current TUIC secret map from remote env
+  ansible.builtin.set_fact:
+    tuic_existing_secrets: "{{ tuic_existing_secrets | default({}) | combine({ item.item: item.stdout }) }}"
+  loop: "{{ tuic_existing_secret_values.results | default([]) }}"
+  when: tuic_env_file.stat.exists
+  no_log: true
+  tags: ['always']
+
+- name: Generate TUIC UUID when missing
+  ansible.builtin.command: cat /proc/sys/kernel/random/uuid
+  register: tuic_generated_uuid
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - (tuic_uuid | default('')) | length == 0
+    - (tuic_existing_secrets.TUIC_UUID | default('')) | length == 0
+  tags: ['always', 'rotate-secrets']
+
+- name: Generate TUIC password when missing
+  ansible.builtin.command: openssl rand -hex 24
+  register: tuic_generated_password
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - (tuic_password | default('')) | length == 0
+    - (tuic_existing_secrets.TUIC_PASSWORD | default('')) | length == 0
+  tags: ['always', 'rotate-secrets']
+
+- name: Resolve effective TUIC deploy values
+  ansible.builtin.set_fact:
+    tuic_effective_image_tag: "{{ singbox_image_tag }}"
+    tuic_effective_log_level: "{{ tuic_log_level }}"
+    tuic_effective_server_address: "{{ tuic_server_address }}"
+    tuic_effective_port: "{{ tuic_port }}"
+    tuic_effective_uuid: >-
+      {{
+        tuic_uuid
+        if (tuic_uuid | default('')) | length > 0
+        else (
+          tuic_existing_secrets.TUIC_UUID
+          | default(
+            tuic_generated_uuid.stdout
+            | default(
+              xray_check_mode_placeholder_uuid if ansible_check_mode else ''
+            )
+          )
+        )
+      }}
+    tuic_effective_password: >-
+      {{
+        tuic_password
+        if (tuic_password | default('')) | length > 0
+        else (
+          tuic_existing_secrets.TUIC_PASSWORD
+          | default(
+            tuic_generated_password.stdout
+            | default(
+              xray_check_mode_placeholder_socks_pass if ansible_check_mode else ''
+            )
+          )
+        )
+      }}
+  no_log: true
+  tags: ['always', 'rotate-secrets']
+
+- name: Ensure all effective TUIC secrets are available
+  ansible.builtin.assert:
+    that:
+      - tuic_effective_uuid | length > 0
+      - tuic_effective_password | length > 0
+    fail_msg: "Failed to resolve one or more TUIC secret values."
+  no_log: true
+  tags: ['always', 'rotate-secrets']
+
+- name: Render remote TUIC env file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ tuic_project_root }}/.env.tuic"
+    owner: "{{ tuic_deploy_user }}"
+    group: "{{ tuic_deploy_group }}"
+    mode: "0600"
+  no_log: true
+  tags: ['always', 'rotate-secrets']
+
+- name: Render TUIC config and certificates
+  ansible.builtin.command: ./scripts/render-tuic-config.sh
+  args:
+    chdir: "{{ tuic_project_root }}"
+  environment:
+    ENV_FILE: "{{ tuic_project_root }}/.env.tuic"
+  changed_when: true
+  when: not ansible_check_mode
+  tags: ['always', 'rotate-secrets']
+
+- name: Validate standalone TUIC compose configuration before runtime changes
+  ansible.builtin.command: docker compose --env-file .env.tuic -f compose.tuic.yaml config
+  args:
+    chdir: "{{ tuic_project_root }}"
+  changed_when: false
+  when: not ansible_check_mode
+  tags: ['always']
+
+- name: Pull the configured sing-box image
+  ansible.builtin.command: docker compose --env-file .env.tuic -f compose.tuic.yaml pull
+  args:
+    chdir: "{{ tuic_project_root }}"
+  register: tuic_pull
+  changed_when: "'Downloaded' in tuic_pull.stdout or 'Pulling' in tuic_pull.stdout or 'Pulled' in tuic_pull.stdout"
+  when: tuic_pull_image
+  tags: ['always']
+
+- name: Run standalone TUIC docker compose up
+  ansible.builtin.command: docker compose --env-file .env.tuic -f compose.tuic.yaml up -d
+  args:
+    chdir: "{{ tuic_project_root }}"
+  register: tuic_up
+  changed_when: "'Started' in tuic_up.stdout or 'Recreated' in tuic_up.stdout or 'Creating' in tuic_up.stdout"
+  when: not ansible_check_mode
+  tags: ['always', 'rotate-secrets']
+
+- name: Wait for TUIC container to become healthy
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' }}"
+      - "{{ tuic_container_name }}"
+  register: tuic_container_health
+  retries: 30
+  delay: 2
+  until: tuic_container_health.stdout in ['healthy', 'running']
+  changed_when: false
+  when: not ansible_check_mode
+  tags: ['always']
+
+- name: Verify published TUIC port after deploy
+  ansible.builtin.shell: |
+    set -eu
+    port="{{ tuic_port }}"
+    if command -v ss >/dev/null 2>&1; then
+      ss -lnu "( sport = :${port} )" 2>/dev/null | awk 'NR > 1 { found = 1 } END { exit(found ? 0 : 1) }'
+    elif command -v lsof >/dev/null 2>&1; then
+      lsof -nP -iUDP:"${port}" >/dev/null 2>&1
+    else
+      exit 1
+    fi
+  args:
+    executable: /bin/sh
+  changed_when: false
+  when: not ansible_check_mode
+  tags: ['always']
+
+- name: Validate standalone TUIC compose and config
+  ansible.builtin.command: ./scripts/validate-tuic.sh
+  args:
+    chdir: "{{ tuic_project_root }}"
+  environment:
+    ENV_FILE: "{{ tuic_project_root }}/.env.tuic"
+  changed_when: false
+  when:
+    - tuic_run_validate
+    - not ansible_check_mode
+  tags: ['always']
+
+- name: Read generated TUIC Shadowrocket URI
+  ansible.builtin.command: cat .generated/tuic/shadowrocket-tuic.txt
+  args:
+    chdir: "{{ tuic_project_root }}"
+  register: tuic_shadowrocket_uri
+  changed_when: false
+  when: not ansible_check_mode
+  tags: ['always']
+
+- name: Print generated TUIC Shadowrocket URI
+  ansible.builtin.debug:
+    msg: "TUIC Shadowrocket URI: {{ tuic_shadowrocket_uri.stdout }}"
+  when:
+    - not ansible_check_mode
+    - (tuic_shadowrocket_uri.stdout | default('')) | length > 0
+  tags: ['always']

@@ -9,4 +9,10 @@
       no_log: true
   roles:
     - role: firewall
+      vars:
+        vpn_firewall_allow_rules:
+          - "{{ xray_firewall_ssh_port }}/tcp"
+          - "{{ xray_vless_port }}/tcp"
+          - "{{ xray_telegram_socks_port }}/tcp"
+          - "{{ xray_telegram_socks_port }}/udp"
     - role: xray_vpn

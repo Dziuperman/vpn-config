@@ -1,4 +1,4 @@
-- name: Provision VPN hosts
+- name: Provision standalone TUIC hosts
   hosts: vpn
   become: true
   pre_tasks:
@@ -14,6 +14,4 @@
       vars:
         vpn_firewall_allow_rules:
           - "{{ xray_firewall_ssh_port }}/tcp"
-          - "{{ xray_vless_port }}/tcp"
-          - "{{ xray_telegram_socks_port }}/tcp"
-          - "{{ xray_telegram_socks_port }}/udp"
+          - "{{ tuic_port }}/udp"

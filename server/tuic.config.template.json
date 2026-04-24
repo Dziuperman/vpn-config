@@ -1,0 +1,46 @@
+{
+  "log": {
+    "level": "__TUIC_LOG_LEVEL__",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "tuic",
+      "tag": "tuic-in",
+      "listen": "0.0.0.0",
+      "listen_port": __TUIC_PORT__,
+      "tcp_fast_open": false,
+      "udp_fragment": true,
+      "users": [
+        {
+          "name": "shadowrocket",
+          "uuid": "__TUIC_UUID__",
+          "password": "__TUIC_PASSWORD__"
+        }
+      ],
+      "congestion_control": "bbr",
+      "auth_timeout": "3s",
+      "zero_rtt_handshake": false,
+      "heartbeat": "10s",
+      "tls": {
+        "enabled": true,
+        "alpn": [
+          "h3"
+        ],
+        "min_version": "1.3",
+        "certificate_path": "/etc/sing-box/certs/cert.pem",
+        "key_path": "/etc/sing-box/certs/key.pem"
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "direct",
+    "auto_detect_interface": true
+  }
+}

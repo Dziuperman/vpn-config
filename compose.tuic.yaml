@@ -1,0 +1,34 @@
+services:
+  sing-box-tuic:
+    image: ghcr.io/sagernet/sing-box:${SINGBOX_IMAGE_TAG:-v1.13.8}
+    container_name: ${SINGBOX_CONTAINER_NAME:-sing-box-tuic}
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /var/lib/sing-box:size=32m,mode=0755
+    ports:
+      - "${TUIC_PORT:-443}:${TUIC_PORT:-443}/udp"
+    volumes:
+      - ./.generated/tuic/config.json:/etc/sing-box/config.json:ro
+      - ./.generated/tuic/cert.pem:/etc/sing-box/certs/cert.pem:ro
+      - ./.generated/tuic/key.pem:/etc/sing-box/certs/key.pem:ro
+    command:
+      - run
+      - -c
+      - /etc/sing-box/config.json
+    healthcheck:
+      test:
+        - CMD
+        - sing-box
+        - check
+        - -c
+        - /etc/sing-box/config.json
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

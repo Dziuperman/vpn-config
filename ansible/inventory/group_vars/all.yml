@@ -20,3 +20,4 @@ xray_check_mode_placeholder_socks_user: checkmodeuser
 xray_check_mode_placeholder_socks_pass: checkmodepassword
 xray_client_artifact_dir: "{{ playbook_dir }}/../../.generated/ansible/{{ inventory_hostname }}"
 xray_firewall_ssh_port: "{{ ansible_port | default(22) }}"
+vpn_firewall_allow_rules: []

@@ -1,4 +1,4 @@
-- name: Provision VPN hosts
+- name: Deploy standalone TUIC VPN
   hosts: vpn
   become: true
   pre_tasks:
@@ -8,12 +8,9 @@
       when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../inventory/host_vars/' ~ inventory_hostname ~ '.vault.yml', wantlist=True) | length > 0
       no_log: true
   roles:
-    - role: common
-    - role: docker
     - role: firewall
       vars:
         vpn_firewall_allow_rules:
           - "{{ xray_firewall_ssh_port }}/tcp"
-          - "{{ xray_vless_port }}/tcp"
-          - "{{ xray_telegram_socks_port }}/tcp"
-          - "{{ xray_telegram_socks_port }}/udp"
+          - "{{ tuic_port }}/udp"
+    - role: tuic_vpn

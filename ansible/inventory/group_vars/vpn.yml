@@ -18,3 +18,26 @@ xray_telegram_socks_user: ""
 xray_telegram_socks_pass: ""
 
 xray_env_extra: {}
+
+tuic_project_root: /opt/tuic-vpn
+tuic_deploy_user: root
+tuic_deploy_group: root
+tuic_compose_project_name: tuic-vpn
+tuic_container_name: sing-box-tuic
+singbox_image_tag: "v1.13.8"
+tuic_pull_image: true
+tuic_run_validate: true
+tuic_log_level: warning
+tuic_server_address: "{{ ansible_host }}"
+tuic_port: 443
+tuic_uuid: ""
+tuic_password: ""
+tuic_shadowrocket_allow_insecure: 1
+tuic_shadowrocket_name: tuic-vpn
+tuic_sysctl_rmem_max: "26214400"
+tuic_sysctl_wmem_max: "26214400"
+tuic_sysctl_rmem_default: "1048576"
+tuic_sysctl_wmem_default: "1048576"
+tuic_sysctl_udp_rmem_min: "65536"
+tuic_sysctl_udp_wmem_min: "65536"
+tuic_env_extra: {}

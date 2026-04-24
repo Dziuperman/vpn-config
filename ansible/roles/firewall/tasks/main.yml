@@ -7,13 +7,9 @@
       changed_when: false
       failed_when: false
 
-    - name: Allow SSH and VPN traffic
+    - name: Allow configured firewall traffic
       ansible.builtin.command: "ufw allow {{ item }}"
-      loop:
-        - "{{ xray_firewall_ssh_port }}/tcp"
-        - "{{ xray_vless_port }}/tcp"
-        - "{{ xray_telegram_socks_port }}/tcp"
-        - "{{ xray_telegram_socks_port }}/udp"
+      loop: "{{ vpn_firewall_allow_rules }}"
       register: ufw_allow_rules
       changed_when: "'Rule added' in ufw_allow_rules.stdout or 'Rules updated' in ufw_allow_rules.stdout"
       failed_when:

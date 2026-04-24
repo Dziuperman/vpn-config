@@ -14,6 +14,7 @@ ANSIBLE_LIMIT="${VPN_ANSIBLE_LIMIT:-vpn-prod}"
 CLIENT_SUMMARY_FILE="$ROOT_DIR/.generated/client/connection-summary.txt"
 CLIENT_SHADOWROCKET_RULES_FILE="$ROOT_DIR/.generated/client/shadowrocket-rules.conf"
 CLIENT_URI_FILE="$ROOT_DIR/.generated/client/shadowrocket-vless.txt"
+TUIC_URI_FILE="$ROOT_DIR/.generated/tuic/shadowrocket-tuic.txt"
 SHADOWROCKET_RULES_URL="https://raw.githubusercontent.com/Dziuperman/vpn-config/refs/heads/main/client/shadowrocket/default.conf"
 
 OVERRIDES_FILE=$(mktemp)
@@ -26,16 +27,23 @@ usage() {
 Usage:
   ./vpn install [flags]
   ./vpn deploy [flags]
+  ./vpn install-tuic [flags]
+  ./vpn deploy-tuic [flags]
   ./vpn preflight [flags]
   ./vpn doctor [--strict]
   ./vpn validate
+  ./vpn validate-tuic
   ./vpn status
+  ./vpn status-tuic
   ./vpn logs [--tail N]
+  ./vpn logs-tuic [--tail N]
   ./vpn restart
+  ./vpn restart-tuic
   ./vpn client summary
   ./vpn client shadowrocket-rules
   ./vpn client shadowrocket-rules-url
   ./vpn client uri
+  ./vpn client tuic-uri
   ./vpn env get <KEY>
   ./vpn env set <KEY> <VALUE>
   ./vpn help
@@ -48,6 +56,12 @@ Flags for install/deploy/preflight:
   --log-level <value>
   --reality-dest <value>
   --reality-server-name <value>
+
+Flags for install-tuic/deploy-tuic:
+  --server-address <value>
+  --tuic-port <value>
+  --image-tag <value>
+  --log-level <value>
 
 Pass extra Ansible arguments to install/deploy after `--`:
   ./vpn install --vless-port 20443 -- --ask-vault-pass -k
@@ -155,6 +169,10 @@ build_ansible_extra_vars_file() {
       XRAY_LOG_LEVEL) ansible_key=xray_log_level ;;
       XRAY_REALITY_DEST) ansible_key=xray_reality_dest ;;
       XRAY_REALITY_SERVER_NAME) ansible_key=xray_reality_server_name ;;
+      TUIC_SERVER_ADDRESS) ansible_key=tuic_server_address ;;
+      TUIC_PORT) ansible_key=tuic_port ;;
+      SINGBOX_IMAGE_TAG) ansible_key=singbox_image_tag ;;
+      TUIC_LOG_LEVEL) ansible_key=tuic_log_level ;;
       *) fail "Unsupported override key for Ansible wrapper: $key" ;;
     esac
 
@@ -260,6 +278,55 @@ run_deploy() {
   run_ansible_playbook playbooks/deploy.yml
 }
 
+parse_tuic_override_flags() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --)
+        shift
+        while [ $# -gt 0 ]; do
+          append_ansible_arg "$1"
+          shift
+        done
+        return 0
+        ;;
+      --server-address)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        append_override TUIC_SERVER_ADDRESS "$2"
+        shift 2
+        ;;
+      --tuic-port)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        append_override TUIC_PORT "$2"
+        shift 2
+        ;;
+      --image-tag)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        append_override SINGBOX_IMAGE_TAG "$2"
+        shift 2
+        ;;
+      --log-level)
+        [ $# -ge 2 ] || fail_usage "Missing value for $1"
+        append_override TUIC_LOG_LEVEL "$2"
+        shift 2
+        ;;
+      *)
+        fail_usage "Unknown flag: $1"
+        ;;
+    esac
+  done
+}
+
+run_install_tuic() {
+  parse_tuic_override_flags "$@"
+  run_ansible_playbook playbooks/provision-tuic.yml
+  run_ansible_playbook playbooks/deploy-tuic.yml
+}
+
+run_deploy_tuic() {
+  parse_tuic_override_flags "$@"
+  run_ansible_playbook playbooks/deploy-tuic.yml
+}
+
 run_preflight() {
   parse_override_flags "$@"
   build_temp_env
@@ -327,6 +394,10 @@ run_client() {
       require_generated_file "$CLIENT_URI_FILE"
       cat "$CLIENT_URI_FILE"
       ;;
+    tuic-uri)
+      require_generated_file "$TUIC_URI_FILE"
+      cat "$TUIC_URI_FILE"
+      ;;
     *)
       fail_usage "Unknown client subcommand: $1"
       ;;
@@ -373,6 +444,12 @@ main() {
     deploy)
       run_deploy "$@"
       ;;
+    install-tuic)
+      run_install_tuic "$@"
+      ;;
+    deploy-tuic)
+      run_deploy_tuic "$@"
+      ;;
     preflight)
       run_preflight "$@"
       ;;
@@ -383,16 +460,38 @@ main() {
       [ $# -eq 0 ] || fail_usage "validate does not accept flags"
       "$VALIDATE_SCRIPT"
       ;;
+    validate-tuic)
+      [ $# -eq 0 ] || fail_usage "validate-tuic does not accept flags"
+      "$ROOT_DIR/scripts/validate-tuic.sh"
+      ;;
     status)
       [ $# -eq 0 ] || fail_usage "status does not accept flags"
       docker compose -f "$COMPOSE_FILE" ps
       ;;
+    status-tuic)
+      [ $# -eq 0 ] || fail_usage "status-tuic does not accept flags"
+      docker compose --env-file "$ROOT_DIR/.env.tuic" -f "$ROOT_DIR/compose.tuic.yaml" ps
+      ;;
     logs)
       run_logs "$@"
+      ;;
+    logs-tuic)
+      if [ $# -gt 0 ] && [ "$1" = "--tail" ]; then
+        [ $# -eq 2 ] || fail_usage "Missing value for $1"
+        docker compose --env-file "$ROOT_DIR/.env.tuic" -f "$ROOT_DIR/compose.tuic.yaml" logs -f --tail "$2"
+      elif [ $# -eq 0 ]; then
+        docker compose --env-file "$ROOT_DIR/.env.tuic" -f "$ROOT_DIR/compose.tuic.yaml" logs -f
+      else
+        fail_usage "Unknown flag: $1"
+      fi
       ;;
     restart)
       [ $# -eq 0 ] || fail_usage "restart does not accept flags"
       docker compose -f "$COMPOSE_FILE" restart
+      ;;
+    restart-tuic)
+      [ $# -eq 0 ] || fail_usage "restart-tuic does not accept flags"
+      docker compose --env-file "$ROOT_DIR/.env.tuic" -f "$ROOT_DIR/compose.tuic.yaml" restart
       ;;
     client)
       run_client "$@"
